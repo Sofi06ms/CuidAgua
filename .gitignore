@@ -12,10 +12,14 @@ target/
 # Flutter / Dart
 .dart_tool/
 .packages
+.pub/
 .pub-cache/
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Gradle
+**/.gradle/
 
 # IDEs
 .idea/

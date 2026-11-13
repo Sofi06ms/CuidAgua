@@ -1,0 +1,44 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: cuidagua-api
+
+  # Conexión a PostgreSQL: los valores se leen de variables de entorno
+  # (en Codespaces las define backend/docker-compose.dev.yml).
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Las tablas las crea Flyway; Hibernate solo verifica que coincidan con las entidades.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # Validación de tokens JWT emitidos por Keycloak.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/cuidagua}
+
+  jackson:
+    # Fechas en formato ISO-8601 (ej. 2026-11-20T08:00:00), cómodo para Flutter.
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,1 +1,350 @@
 # Backend de CuidAgua
+
+API REST que recibe y procesa las solicitudes de la app Flutter de CuidAgua: **reportes ciudadanos** de incidencias de agua y **avisos de suministro** publicados por administradores.
+
+| Componente     | Tecnología                                   |
+|----------------|----------------------------------------------|
+| Lenguaje       | Java 21                                      |
+| Framework      | Spring Boot 3.5 (Maven)                      |
+| Base de datos  | PostgreSQL 16 + migraciones con Flyway       |
+| Autenticación  | Keycloak 26 (tokens JWT, OAuth2 Resource Server) |
+| Entorno de desarrollo | GitHub Codespaces / Dev Containers    |
+
+---
+
+## 1. Estructura del proyecto
+
+El código está organizado **por módulos funcionales**. Cada módulo de negocio tiene sus propias capas `entity`, `dto`, `repository`, `service` y `controller`.
+
+```
+backend/
+├── pom.xml                         # Dependencias y build de Maven
+├── docker-compose.dev.yml          # Contenedores de desarrollo: app, db, keycloak
+├── keycloak/
+│   └── realm-cuidagua.json         # Realm, roles, cliente y usuarios de prueba
+├── pruebas/
+│   └── CuidAgua-API.postman_collection.json   # Colección de pruebas (Postman / Thunder Client)
+└── src/
+    ├── main/
+    │   ├── java/com/cuidagua/api/
+    │   │   ├── CuidaguaApiApplication.java    # Punto de entrada
+    │   │   ├── config/                        # Configuración transversal
+    │   │   │   ├── SecurityConfig.java        # Rutas públicas/protegidas, JWT, CORS
+    │   │   │   ├── KeycloakRealmRoleConverter.java  # Lee realm_access.roles del token
+    │   │   │   └── JsonSecurityHandlers.java  # Respuestas JSON para 401 y 403
+    │   │   ├── common/                        # Código compartido por todos los módulos
+    │   │   │   ├── dto/ApiResponse.java       # Formato único de respuesta
+    │   │   │   ├── exception/                 # Manejo global de errores
+    │   │   │   └── util/                      # Utilidades
+    │   │   ├── reporte/                       # Módulo de reportes ciudadanos
+    │   │   │   ├── entity/                    # Reporte, TipoReporte, EstadoReporte
+    │   │   │   ├── dto/                       # ReporteRequest, ReporteResponse
+    │   │   │   ├── repository/                # ReporteRepository (Spring Data JPA)
+    │   │   │   ├── service/                   # ReporteService (lógica de negocio)
+    │   │   │   └── controller/                # ReporteController (/api/reportes)
+    │   │   └── aviso/                         # Módulo de avisos de suministro
+    │   │       ├── entity/                    # Aviso, TipoAviso
+    │   │       ├── dto/                       # AvisoRequest, AvisoResponse
+    │   │       ├── repository/                # AvisoRepository
+    │   │       ├── service/                   # AvisoService
+    │   │       └── controller/                # AvisoController (/api/avisos)
+    │   └── resources/
+    │       ├── application.yml                # Configuración (lee variables de entorno)
+    │       └── db/migration/
+    │           └── V1__crear_tablas.sql       # Tablas reportes y avisos
+    └── test/java/com/cuidagua/api/            # Pruebas de controladores y seguridad
+```
+
+**Responsabilidad de cada capa:**
+
+| Capa         | Qué hace |
+|--------------|----------|
+| `entity`     | Clases JPA que representan las tablas y los enums del dominio. |
+| `dto`        | Lo que entra (`*Request`, con validaciones) y lo que sale (`*Response`) de la API. Las entidades nunca se exponen directamente. |
+| `repository` | Acceso a datos con Spring Data JPA. |
+| `service`    | Reglas de negocio y transacciones. |
+| `controller` | Endpoints REST: reciben la petición, llaman al servicio y arman la respuesta `ApiResponse`. |
+
+Para agregar un módulo nuevo (por ejemplo, `notificacion`), crea la carpeta con las mismas cinco subcarpetas.
+
+---
+
+## 2. Abrir el proyecto en GitHub Codespaces
+
+1. En GitHub, entra al repositorio y cambia a la rama de trabajo.
+2. Botón **Code** → pestaña **Codespaces** → menú **⋯** → **New with options…**
+3. En **Dev container configuration** elige **CuidAgua - Backend (Java 21 + Spring Boot)** (`.devcontainer/backend/devcontainer.json`).
+4. Pulsa **Create codespace**. La primera vez tarda unos minutos.
+
+Codespaces levanta automáticamente tres contenedores, definidos en `backend/docker-compose.dev.yml`:
+
+| Servicio   | Qué es                          | Dirección              |
+|------------|---------------------------------|------------------------|
+| `app`      | Java 21 + Maven (aquí programas) | API en `http://localhost:8080` |
+| `db`       | PostgreSQL 16                   | `localhost:5432` (base `cuidagua`, usuario `cuidagua`, contraseña `cuidagua`) |
+| `keycloak` | Keycloak 26 en modo dev         | `http://localhost:8180` (consola: `admin` / `admin`) |
+
+Los tres comparten la misma red, así que todo está en `localhost`. Los puertos 8080, 8180 y 5432 se reenvían automáticamente (pestaña **Ports** de VS Code).
+
+El realm `cuidagua` se importa solo al arrancar Keycloak e incluye:
+
+| Usuario      | Contraseña     | Roles              |
+|--------------|----------------|--------------------|
+| `ciudadano1` | `ciudadano123` | CIUDADANO          |
+| `admin1`     | `admin123`     | ADMIN, CIUDADANO   |
+
+> Las credenciales y la configuración de Keycloak son **solo para desarrollo**.
+
+---
+
+## 3. Correr la API
+
+En la terminal del Codespace (ya estás en la carpeta `backend`):
+
+```bash
+mvn spring-boot:run
+```
+
+Al arrancar, Flyway crea las tablas `reportes` y `avisos`. Comprueba que la API funciona:
+
+```bash
+curl http://localhost:8080/actuator/health
+# {"status":"UP"}
+```
+
+Para ejecutar las pruebas automáticas (no necesitan base de datos ni Keycloak):
+
+```bash
+mvn test
+```
+
+### Variables de entorno
+
+`application.yml` lee la conexión de variables de entorno. En el Codespace ya vienen definidas en `docker-compose.dev.yml`:
+
+| Variable              | Valor en desarrollo                           |
+|-----------------------|-----------------------------------------------|
+| `DB_URL`              | `jdbc:postgresql://localhost:5432/cuidagua`   |
+| `DB_USER`             | `cuidagua`                                    |
+| `DB_PASSWORD`         | `cuidagua`                                    |
+| `KEYCLOAK_ISSUER_URI` | `http://localhost:8180/realms/cuidagua` (valor por defecto) |
+
+---
+
+## 4. Endpoints
+
+| Método | Ruta            | Acceso              | Descripción |
+|--------|-----------------|---------------------|-------------|
+| POST   | `/api/reportes` | Token (cualquier usuario) | Registra una incidencia. |
+| GET    | `/api/reportes` | Público             | Lista reportes del más reciente al más antiguo. Filtro opcional `?colonia=`. |
+| POST   | `/api/avisos`   | Token con rol **ADMIN** | Publica un aviso de suministro. |
+| GET    | `/api/avisos`   | Público             | Lista avisos (más recientes primero). Filtro opcional `?colonia=`. |
+| GET    | `/actuator/health` | Público          | Estado de la API. |
+
+El filtro `colonia` no distingue mayúsculas de minúsculas (`centro` = `Centro`).
+
+### Seguridad
+
+- Los tokens son JWT emitidos por Keycloak (realm `cuidagua`, cliente `cuidagua-app`).
+- Se envían en el encabezado `Authorization: Bearer <token>`.
+- Los roles se leen de `realm_access.roles` del token.
+- Del token se guarda el usuario que crea el reporte o aviso: `sub` (id) y `preferred_username` (nombre).
+
+### Campos de `POST /api/reportes`
+
+| Campo         | Tipo    | Obligatorio | Reglas |
+|---------------|---------|-------------|--------|
+| `tipo`        | texto   | Sí | `FUGA`, `TUBERIA_ROTA`, `SIN_AGUA`, `BAJA_PRESION`, `OTRO` |
+| `descripcion` | texto   | Sí | 10 a 500 caracteres |
+| `direccion`   | texto   | Sí | máx. 255 caracteres |
+| `colonia`     | texto   | Sí | máx. 120 caracteres |
+| `latitud`     | número  | No | entre -90 y 90 |
+| `longitud`    | número  | No | entre -180 y 180 |
+| `fotoUrl`     | texto   | No | URL válida, máx. 500 caracteres |
+
+El servidor asigna `estado = PENDIENTE`, la fecha de creación y el usuario del token.
+
+### Campos de `POST /api/avisos`
+
+| Campo                   | Tipo   | Obligatorio | Reglas |
+|-------------------------|--------|-------------|--------|
+| `titulo`                | texto  | Sí | 5 a 120 caracteres |
+| `mensaje`               | texto  | Sí | 10 a 1000 caracteres |
+| `colonia`               | texto  | Sí | máx. 120 caracteres |
+| `tipo`                  | texto  | Sí | `CORTE`, `RESTABLECIMIENTO`, `MANTENIMIENTO`, `BAJA_PRESION` |
+| `fechaInicio`           | fecha  | No | debe ser anterior a `fechaRestablecimiento` |
+| `fechaRestablecimiento` | fecha  | Sí | debe estar en el futuro |
+
+Las fechas usan el formato `yyyy-MM-ddTHH:mm:ss` (ej. `2026-11-20T08:00:00`), en hora del centro de México (`TZ=America/Mexico_City`).
+
+---
+
+## 5. Formato de respuestas
+
+Todas las respuestas tienen la misma forma, para que Flutter las procese igual:
+
+- **Éxito:** `{ "exito": true, "mensaje": "...", "datos": ... }`
+- **Error:** `{ "exito": false, "mensaje": "...", "errores": { "campo": "motivo" } }`
+
+| Código | Cuándo |
+|--------|--------|
+| 201 | Se creó un reporte o aviso |
+| 200 | Consulta correcta |
+| 400 | Datos inválidos (validación o JSON mal formado) |
+| 401 | No se envió token, o es inválido o expiró |
+| 403 | El token es válido pero el usuario no tiene el rol necesario |
+
+### 201 – Reporte creado
+
+```json
+{
+  "exito": true,
+  "mensaje": "Reporte registrado correctamente",
+  "datos": {
+    "id": 1,
+    "tipo": "FUGA",
+    "descripcion": "Fuga de agua en la banqueta frente al número 25",
+    "direccion": "Av. Juárez 25",
+    "colonia": "Centro",
+    "latitud": 19.4326,
+    "longitud": -99.1332,
+    "fotoUrl": "https://ejemplo.com/fotos/fuga1.jpg",
+    "estado": "PENDIENTE",
+    "usuario": "ciudadano1",
+    "fechaCreacion": "2026-11-12T10:15:30.123456"
+  }
+}
+```
+
+### 201 – Aviso creado
+
+```json
+{
+  "exito": true,
+  "mensaje": "Aviso publicado correctamente",
+  "datos": {
+    "id": 1,
+    "titulo": "Corte programado de agua",
+    "mensaje": "Se suspenderá el servicio por mantenimiento de la red principal.",
+    "colonia": "Centro",
+    "tipo": "CORTE",
+    "fechaInicio": null,
+    "fechaRestablecimiento": "2026-11-15T08:00:00",
+    "creadoPor": "admin1",
+    "fechaCreacion": "2026-11-12T10:20:00.654321"
+  }
+}
+```
+
+### 200 – Consulta
+
+```json
+{
+  "exito": true,
+  "mensaje": "Se encontraron 1 reportes",
+  "datos": [
+    { "id": 1, "tipo": "FUGA", "colonia": "Centro", "estado": "PENDIENTE", "...": "..." }
+  ]
+}
+```
+
+### 400 – Error de validación
+
+```json
+{
+  "exito": false,
+  "mensaje": "Los datos enviados no son válidos",
+  "errores": {
+    "tipo": "El tipo de reporte es obligatorio",
+    "descripcion": "La descripción debe tener entre 10 y 500 caracteres",
+    "direccion": "La dirección es obligatoria",
+    "latitud": "La latitud debe estar entre -90 y 90"
+  }
+}
+```
+
+Con un valor de enum desconocido:
+
+```json
+{
+  "exito": false,
+  "mensaje": "Los datos enviados no son válidos",
+  "errores": {
+    "tipo": "Valor no válido. Valores permitidos: CORTE, RESTABLECIMIENTO, MANTENIMIENTO, BAJA_PRESION"
+  }
+}
+```
+
+### 401 – Sin token
+
+```json
+{
+  "exito": false,
+  "mensaje": "Debes iniciar sesión para realizar esta acción",
+  "errores": {
+    "token": "No se envió el token de acceso (Authorization: Bearer <token>)"
+  }
+}
+```
+
+### 403 – Sin permiso
+
+```json
+{
+  "exito": false,
+  "mensaje": "No tienes permiso para realizar esta acción",
+  "errores": {
+    "rol": "Tu usuario no tiene el rol requerido"
+  }
+}
+```
+
+---
+
+## 6. Probar los endpoints
+
+La API debe estar corriendo (`mvn spring-boot:run`).
+
+### Opción A: colección automática con Newman (terminal)
+
+El Codespace incluye Node.js, así que puedes correr toda la colección en otra terminal:
+
+```bash
+npx --yes newman run pruebas/CuidAgua-API.postman_collection.json
+```
+
+La colección pide los tokens, los guarda y verifica cada caso: reporte válido (201), inválido (400), sin token (401), listados (200), aviso como admin (201), aviso como ciudadano (403) y aviso con fecha pasada (400).
+
+### Opción B: Thunder Client o Postman
+
+1. Abre **Thunder Client** en la barra lateral → **Collections** → menú **≡** → **Import** y elige `backend/pruebas/CuidAgua-API.postman_collection.json`. En Postman: **Import** con el mismo archivo.
+2. Ejecuta primero **1. Autenticación** (los dos tokens) y luego los demás en orden.
+3. Los scripts guardan los tokens en las variables `tokenCiudadano` y `tokenAdmin`. Si tu versión de Thunder Client no ejecuta scripts, copia el `access_token` de la respuesta y pégalo en la variable de la colección.
+
+### Opción C: curl
+
+```bash
+# 1. Obtener token de ciudadano1
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/cuidagua/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=cuidagua-app \
+  -d username=ciudadano1 -d password=ciudadano123 | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+
+# 2. Crear un reporte
+curl -i -X POST http://localhost:8080/api/reportes \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"tipo":"FUGA","descripcion":"Fuga de agua frente al número 25","direccion":"Av. Juárez 25","colonia":"Centro"}'
+
+# 3. Listar reportes de una colonia
+curl -s "http://localhost:8080/api/reportes?colonia=Centro"
+```
+
+Para el token de administrador usa `username=admin1` y `password=admin123`.
+
+---
+
+## 7. Notas para el equipo
+
+- **Issuer del token:** la API acepta tokens cuyo `iss` sea `http://localhost:8180/realms/cuidagua`. Cuando la app Flutter se conecte desde un emulador o dispositivo usando la URL pública del Codespace, el `iss` cambiará. En ese caso hay que configurar `KC_HOSTNAME` en Keycloak y ajustar `KEYCLOAK_ISSUER_URI`.
+- **docker-compose.yml de la raíz:** sigue usando `postgres:17` y `cuidagua_db`. El entorno de desarrollo del backend (`docker-compose.dev.yml`) usa PostgreSQL 16 con la base `cuidagua`. Conviene unificarlos cuando se cierren las decisiones pendientes de `docs/DECISIONES_TECNICAS.md`.
+- **Nuevas tablas o columnas:** crea un archivo nuevo en `src/main/resources/db/migration/` (`V2__descripcion.sql`, `V3__...`). No modifiques una migración que ya se ejecutó.
+- **Estados de reporte:** además de `PENDIENTE` existen `EN_PROCESO`, `RESUELTO` y `RECHAZADO`, preparados para cuando se agregue el cambio de estado.

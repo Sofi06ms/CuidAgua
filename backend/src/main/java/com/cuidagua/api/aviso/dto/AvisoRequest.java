@@ -23,6 +23,10 @@ public record AvisoRequest(
         @Size(max = 120, message = "La colonia no puede superar los 120 caracteres")
         String colonia,
 
+        @NotBlank(message = "La zona es obligatoria")
+        @Size(max = 80, message = "La zona no puede superar los 80 caracteres")
+        String zona,
+
         @NotNull(message = "El tipo de aviso es obligatorio")
         TipoAviso tipo,
 

@@ -17,11 +17,14 @@ import java.util.List;
 
 /**
  * Seguridad de la API: valida tokens JWT de Keycloak y define qué rutas son públicas.
+ * Las reglas se evalúan en orden: las rutas específicas van antes que los comodines.
  */
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    private static final String ADMIN = "ADMIN";
 
     private final JsonSecurityHandlers jsonSecurityHandlers;
 
@@ -34,9 +37,21 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health/**", "/actuator/info", "/error").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/reportes", "/api/avisos").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/avisos").hasRole("ADMIN")
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+
+                        // Reportes
+                        .requestMatchers(HttpMethod.GET, "/api/reportes/resumen").hasRole(ADMIN)
+                        .requestMatchers(HttpMethod.GET, "/api/reportes/mios").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/reportes", "/api/reportes/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reportes").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/reportes/*/estado").hasRole(ADMIN)
+
+                        // Avisos: consulta pública, administración solo ADMIN
+                        .requestMatchers(HttpMethod.GET, "/api/avisos", "/api/avisos/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/avisos").hasRole(ADMIN)
+                        .requestMatchers(HttpMethod.PUT, "/api/avisos/*").hasRole(ADMIN)
+                        .requestMatchers(HttpMethod.DELETE, "/api/avisos/*").hasRole(ADMIN)
+
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))

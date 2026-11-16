@@ -36,6 +36,10 @@ public class Aviso {
     @Column(nullable = false, length = 120)
     private String colonia;
 
+    /** Zona o sector de la ciudad; se usa para filtrar. NULL solo en registros anteriores a V2. */
+    @Column(length = 80)
+    private String zona;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private TipoAviso tipo;
@@ -57,10 +61,18 @@ public class Aviso {
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private LocalDateTime fechaCreacion;
 
+    @Column(name = "fecha_actualizacion")
+    private LocalDateTime fechaActualizacion;
+
     @PrePersist
     void alCrear() {
         if (fechaCreacion == null) {
             fechaCreacion = LocalDateTime.now();
         }
+    }
+
+    /** Un aviso está vigente mientras no llegue su fecha de restablecimiento. */
+    public boolean estaVigente(LocalDateTime ahora) {
+        return fechaRestablecimiento.isAfter(ahora);
     }
 }

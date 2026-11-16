@@ -40,6 +40,10 @@ public class Reporte {
     @Column(nullable = false, length = 120)
     private String colonia;
 
+    /** Zona o sector de la ciudad; se usa para filtrar. NULL solo en registros anteriores a V2. */
+    @Column(length = 80)
+    private String zona;
+
     private Double latitud;
 
     private Double longitud;
@@ -61,6 +65,17 @@ public class Reporte {
 
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private LocalDateTime fechaCreacion;
+
+    /** Comentario del administrador en el último cambio de estado (obligatorio al rechazar). */
+    @Column(name = "comentario_estado", length = 500)
+    private String comentarioEstado;
+
+    /** Administrador (preferred_username) que hizo el último cambio de estado. */
+    @Column(name = "actualizado_por", length = 255)
+    private String actualizadoPor;
+
+    @Column(name = "fecha_actualizacion")
+    private LocalDateTime fechaActualizacion;
 
     @PrePersist
     void alCrear() {

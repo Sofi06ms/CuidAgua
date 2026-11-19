@@ -1,0 +1,65 @@
+{
+  "realm": "cuidagua",
+  "displayName": "CuidAgua",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 1800,
+  "roles": {
+    "realm": [
+      {
+        "name": "CIUDADANO",
+        "description": "Ciudadano que puede registrar reportes de incidencias"
+      },
+      {
+        "name": "ADMIN",
+        "description": "Administrador que puede publicar avisos de suministro"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "cuidagua-app",
+      "name": "App móvil CuidAgua (Flutter)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "ciudadano1",
+      "enabled": true,
+      "email": "ciudadano1@cuidagua.local",
+      "emailVerified": true,
+      "firstName": "Carla",
+      "lastName": "Ciudadana",
+      "credentials": [
+        { "type": "password", "value": "ciudadano123", "temporary": false }
+      ],
+      "realmRoles": ["CIUDADANO"]
+    },
+    {
+      "username": "admin1",
+      "enabled": true,
+      "email": "admin1@cuidagua.local",
+      "emailVerified": true,
+      "firstName": "Andrés",
+      "lastName": "Administrador",
+      "credentials": [
+        { "type": "password", "value": "admin123", "temporary": false }
+      ],
+      "realmRoles": ["ADMIN", "CIUDADANO"]
+    }
+  ]
+}

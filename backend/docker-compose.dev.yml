@@ -1,0 +1,66 @@
+# Entorno de desarrollo del backend de CuidAgua (pensado para GitHub Codespaces / Dev Containers).
+#
+# Los tres servicios comparten la red del servicio "db" (network_mode: service:db).
+# Así, desde cualquiera de ellos todo está en "localhost":
+#   - API (app)      -> http://localhost:8080
+#   - Keycloak       -> http://localhost:8180
+#   - PostgreSQL     -> localhost:5432
+# Esto evita que el "issuer" del token cambie según desde dónde se pida
+# (siempre será http://localhost:8180/realms/cuidagua).
+#
+# Nota: este archivo es solo para desarrollo. El docker-compose.yml de la raíz
+# del repositorio sigue siendo la configuración general del equipo.
+
+services:
+  app:
+    # Imagen oficial de Dev Containers con Java 21.
+    # Maven se instala con la "feature" de Java declarada en .devcontainer/backend/devcontainer.json.
+    image: mcr.microsoft.com/devcontainers/java:1-21-bookworm
+    command: sleep infinity
+    volumes:
+      - ..:/workspace:cached
+    environment:
+      DB_URL: jdbc:postgresql://localhost:5432/cuidagua
+      DB_USER: cuidagua
+      DB_PASSWORD: cuidagua
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/cuidagua
+      TZ: America/Mexico_City
+    network_mode: service:db
+    depends_on:
+      db:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cuidagua
+      POSTGRES_USER: cuidagua
+      POSTGRES_PASSWORD: cuidagua
+      TZ: America/Mexico_City
+    volumes:
+      - cuidagua_dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cuidagua -d cuidagua"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    # Modo desarrollo en el puerto 8180 e importación del realm de ./keycloak al arrancar.
+    command: start-dev --http-port=8180 --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    network_mode: service:db
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cuidagua_dev_pgdata:

@@ -1,7 +1,7 @@
-
 import 'package:flutter/material.dart';
 
-import 'screens/dashboard_screen.dart';
+import 'screens/login_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,7 +15,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'CuidAgua',
-      home: const DashboardScreen(),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      home: const LoginScreen(),
     );
   }
 }

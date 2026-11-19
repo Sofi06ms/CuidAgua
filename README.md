@@ -14,23 +14,23 @@ Además, busca mejorar la comunicación entre los ciudadanos y las autoridades m
 
 
 
-\## Características principales
+## Características principales
 
 
 
-\- \*\*Reportes ciudadanos:\*\* permite registrar fugas de agua, averías en tuberías y otros problemas relacionados con el servicio.
+- **Reportes ciudadanos:** permite registrar fugas de agua, averías en tuberías y otros problemas relacionados con el servicio.
 
-\- \*\*Notificaciones de suministro:\*\* informa a los usuarios sobre los horarios y fechas de suministro de agua en su zona.
+- **Notificaciones de suministro:** informa a los usuarios sobre los horarios y fechas de suministro de agua en su zona.
 
-\- \*\*Identificación de zonas:\*\* combina mecanismos de identificación para determinar la ubicación de los reportes y la zona de suministro.
+- **Identificación de zonas:** combina mecanismos de identificación para determinar la ubicación de los reportes y la zona de suministro.
 
-\- \*\*Panel administrativo web:\*\* permite gestionar la información de reportes e incidencias.
+- **Panel administrativo web:** permite gestionar la información de reportes e incidencias.
 
-\- \*\*Gestión de incidencias:\*\* facilita el seguimiento de los problemas reportados por los ciudadanos.
+- **Gestión de incidencias:** facilita el seguimiento de los problemas reportados por los ciudadanos.
 
 
 
-\## Stack tecnológico
+## Stack tecnológico
 
 
 
@@ -38,75 +38,75 @@ El proyecto utiliza una arquitectura cliente-servidor y un repositorio centraliz
 
 
 
-\### Frontend móvil
+### Frontend móvil
 
 
 
-\- \*\*Framework:\*\* Flutter.
+- **Framework:** Flutter.
 
-\- \*\*Lenguaje:\*\* Dart.
+- **Lenguaje:** Dart.
 
-\- \*\*Arquitectura:\*\* Clean Architecture, organizada en las capas de Dominio, Datos y Presentación.
+- **Arquitectura:** Clean Architecture, organizada en las capas de Dominio, Datos y Presentación.
 
-\- \*\*Programación asíncrona:\*\* Future, async y await para el consumo de servicios y API REST.
-
-
-
-\### Backend
+- **Programación asíncrona:** Future, async y await para el consumo de servicios y API REST.
 
 
 
-\- \*\*Lenguaje:\*\* Java.
-
-\- \*\*Framework:\*\* Spring Boot.
-
-\- \*\*Arquitectura:\*\* arquitectura por capas y patrón Repository.
-
-\- \*\*Comunicación:\*\* API REST.
+### Backend
 
 
 
-\### Panel administrativo
+- **Lenguaje:** Java.
+
+- **Framework:** Spring Boot.
+
+- **Arquitectura:** arquitectura por capas y patrón Repository.
+
+- **Comunicación:** API REST.
 
 
 
-\- \*\*Plataforma:\*\* aplicación web.
-
-\- \*\*Objetivo:\*\* administración y seguimiento de reportes e incidencias.
+### Panel administrativo
 
 
 
-\### Base de datos e infraestructura
+- **Plataforma:** aplicación web.
+
+- **Objetivo:** administración y seguimiento de reportes e incidencias.
 
 
 
-\- \*\*Base de datos:\*\* PostgreSQL 17.
-
-\- \*\*Contenedores:\*\* Docker.
-
-\- \*\*Orquestación:\*\* Docker Compose.
-
-\- \*\*Control de versiones:\*\* Git y GitHub.
+### Base de datos e infraestructura
 
 
 
-\## Decisiones técnicas del proyecto
+- **Base de datos:** PostgreSQL 17.
+
+- **Contenedores:** Docker.
+
+- **Orquestación:** Docker Compose.
+
+- **Control de versiones:** Git y GitHub.
 
 
 
-\- El panel administrativo se desarrollará como una aplicación web.
-
-\- La identificación de zonas utilizará un enfoque combinado.
-
-\- Los horarios de suministro de agua serán administrados manualmente.
-
-\- La aplicación móvil se comunicará con el backend mediante una API REST.
-
-\- PostgreSQL almacenará la información de usuarios, reportes y datos relacionados con el suministro.
+## Decisiones técnicas del proyecto
 
 
 
-\## Estructura del repositorio
+- El panel administrativo se desarrollará como una aplicación web.
+
+- La identificación de zonas utilizará un enfoque combinado.
+
+- Los horarios de suministro de agua serán administrados manualmente.
+
+- La aplicación móvil se comunicará con el backend mediante una API REST.
+
+- PostgreSQL almacenará la información de usuarios, reportes y datos relacionados con el suministro.
+
+
+
+## Estructura del repositorio
 
 
 
@@ -132,7 +132,7 @@ CuidAgua/
 
 ├── docs/
 
-│   └── DECISIONES\_TECNICAS.md
+│   └── DECISIONES_TECNICAS.md
 
 └── scripts/
 
@@ -144,7 +144,7 @@ Conforme avance el desarrollo, se incorporarán los directorios correspondientes
 
 
 
-\## Metodología de trabajo
+## Metodología de trabajo
 
 
 
@@ -156,15 +156,15 @@ Los roles están distribuidos de la siguiente manera:
 
 
 
-\- \*\*Scrum Master / DevOps:\*\* administración del repositorio, infraestructura Docker, integración de componentes y coordinación de las actividades Scrum.
+- **Scrum Master / DevOps:** administración del repositorio, infraestructura Docker, integración de componentes y coordinación de las actividades Scrum.
 
-\- \*\*Ingeniero de Datos:\*\* diseño, modelado y administración de la base de datos PostgreSQL.
+- **Ingeniero de Datos:** diseño, modelado y administración de la base de datos PostgreSQL.
 
-\- \*\*Desarrollador Backend:\*\* implementación de la API REST con Java y Spring Boot.
+- **Desarrollador Backend:** implementación de la API REST con Java y Spring Boot.
 
-\- \*\*Desarrollador Frontend (UI):\*\* desarrollo de las interfaces móviles en Flutter bajo Clean Architecture.
+- **Desarrollador Frontend (UI):** desarrollo de las interfaces móviles en Flutter bajo Clean Architecture.
 
-\- \*\*Desarrollador de Integraciones Asíncronas:\*\* implementación de la programación asíncrona en Dart e integración con la API REST.
+- **Desarrollador de Integraciones Asíncronas:** implementación de la programación asíncrona en Dart e integración con la API REST.
 
 
 
@@ -200,11 +200,11 @@ Para conocer los procedimientos detallados de creación, publicación e integrac
 
 
 
-\## Configuración del entorno local
+## Configuración del entorno local
 
 
 
-\### Requisitos previos
+### Requisitos previos
 
 
 
@@ -212,13 +212,13 @@ Antes de comenzar, es necesario contar con:
 
 
 
-\- Git.
+- Git.
 
-\- Docker Desktop con Docker Compose.
+- Docker Desktop con Docker Compose.
 
-\- Java y Maven (para el desarrollo del backend, cuando esté disponible).
+- Java y Maven (para el desarrollo del backend, cuando esté disponible).
 
-\- Flutter y Dart (para el desarrollo de la aplicación móvil).
+- Flutter y Dart (para el desarrollo de la aplicación móvil).
 
 
 
@@ -226,7 +226,7 @@ En Windows se recomienda utilizar Docker Desktop con integración WSL 2.
 
 
 
-\### 1. Clonar el repositorio
+### 1. Clonar el repositorio
 
 
 
@@ -240,7 +240,7 @@ cd CuidAgua
 
 
 
-\### 2. Crear el archivo de variables de entorno
+### 2. Crear el archivo de variables de entorno
 
 
 
@@ -264,11 +264,11 @@ Abrir el archivo `.env` y configurar una contraseña segura para PostgreSQL. Est
 
 
 
-\*\*Importante:\*\* nunca compartir ni publicar el contenido del archivo `.env`.
+**Importante:** nunca compartir ni publicar el contenido del archivo `.env`.
 
 
 
-\### 3. Levantar PostgreSQL con Docker Compose
+### 3. Levantar PostgreSQL con Docker Compose
 
 
 
@@ -288,7 +288,7 @@ Este comando crea e inicia el contenedor de PostgreSQL utilizando la configuraci
 
 
 
-\### 4. Verificar el estado del contenedor
+### 4. Verificar el estado del contenedor
 
 
 
@@ -304,11 +304,11 @@ docker compose ps
 
 
 
-El contenedor `cuidagua\_postgres` debe aparecer con estado `Up (healthy)`.
+El contenedor `cuidagua_postgres` debe aparecer con estado `Up (healthy)`.
 
 
 
-\### 5. Detener los servicios
+### 5. Detener los servicios
 
 
 
@@ -336,11 +336,11 @@ docker compose up -d
 
 
 
-\*\*Importante:\*\* no utilizar `docker compose down -v` salvo que se desee eliminar también el volumen de PostgreSQL y, con él, los datos almacenados.
+**Importante:** no utilizar `docker compose down -v` salvo que se desee eliminar también el volumen de PostgreSQL y, con él, los datos almacenados.
 
 
 
-\## Configuración de la base de datos
+## Configuración de la base de datos
 
 
 
@@ -354,15 +354,15 @@ Los parámetros iniciales de PostgreSQL son:
 
 | Imagen Docker | postgres:17 |
 
-| Base de datos | cuidagua\_db |
+| Base de datos | cuidagua_db |
 
-| Usuario | cuidagua\_user |
+| Usuario | cuidagua_user |
 
 | Puerto | 5432 |
 
-| Contenedor | cuidagua\_postgres |
+| Contenedor | cuidagua_postgres |
 
-| Volumen | postgres\_data |
+| Volumen | postgres_data |
 
 
 
@@ -370,21 +370,21 @@ Las credenciales se obtienen del archivo `.env` de cada integrante.
 
 
 
-\## Documentación adicional
+## Documentación adicional
 
 
 
-\- `CONTRIBUTING.md`: normas para contribuir al repositorio.
+- `CONTRIBUTING.md`: normas para contribuir al repositorio.
 
-\- `docs/DECISIONES\_TECNICAS.md`: decisiones técnicas y arquitectónicas del proyecto.
+- `docs/DECISIONES_TECNICAS.md`: decisiones técnicas y arquitectónicas del proyecto.
 
-\- `.env.example`: plantilla de variables de entorno necesarias para PostgreSQL.
-
-
-
-\---
+- `.env.example`: plantilla de variables de entorno necesarias para PostgreSQL.
 
 
 
-\*\*CuidAgua — Tecnología al servicio de una mejor gestión del agua.\*\* 💧
+---
+
+
+
+**CuidAgua — Tecnología al servicio de una mejor gestión del agua.** 💧
 

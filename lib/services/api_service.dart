@@ -26,8 +26,7 @@ class ApiService {
                 : 'http://10.0.2.2:3000/api'),
         _client = client ?? http.Client();
 
-  // 1. ENVIAR REPORTE CIUDADANO
-
+  // 1. ENVIAR REPORTE CIUDADANO (POST)
   Future<bool> enviarReporte(
     String descripcion,
     String ubicacion,
@@ -56,27 +55,26 @@ class ApiService {
         return true;
       }
 
-      debugPrint(
-        'Error al enviar reporte: HTTP ${response.statusCode}',
-      );
+      // Manejo de códigos de error para POST
+      switch (response.statusCode) {
+        case 400:
+          throw Exception('Error 400: Los datos enviados son incorrectos o están incompletos.');
+        case 500:
+          throw Exception('Error 500: Error interno en el servidor de Backend.');
+        default:
+          throw Exception('Error al enviar reporte: HTTP ${response.statusCode}');
+      }
 
-      return false;
     } on TimeoutException {
-      debugPrint('Tiempo de espera agotado al enviar reporte');
-      return false;
+      throw Exception('Tiempo de espera agotado al enviar el reporte.');
     } on http.ClientException catch (e) {
-      debugPrint('Error de conexión: $e');
-      return false;
+      throw Exception('Error de conexión: $e');
     } catch (e) {
-      debugPrint('Error inesperado al enviar reporte: $e');
-      return false;
+      throw Exception('Error inesperado al enviar reporte: $e');
     }
   }
 
-  // ==========================================
-  // 2. CONSULTAR REPORTES
-  // ==========================================
-
+  // 2. CONSULTAR REPORTES (GET)
   Future<List<Reporte>> consultarReportes() async {
     if (useMockData) {
       await Future.delayed(const Duration(seconds: 2));
@@ -115,11 +113,18 @@ class ApiService {
         }).toList();
       }
 
-      throw Exception(
-        'Error del servidor: HTTP ${response.statusCode}',
-      );
+      // Manejo de códigos de error para GET
+      switch (response.statusCode) {
+        case 404:
+          throw Exception('Error 404: No se encontraron reportes en el servidor.');
+        case 500:
+          throw Exception('Error 500: Error interno en el servidor de Backend.');
+        default:
+          throw Exception('Error del servidor: HTTP ${response.statusCode}');
+      }
+
     } on TimeoutException {
-      throw Exception('Tiempo de espera agotado al consultar reportes');
+      throw Exception('Tiempo de espera agotado al consultar reportes.');
     } on http.ClientException catch (e) {
       throw Exception('Error de conexión: $e');
     } catch (e) {
@@ -127,10 +132,7 @@ class ApiService {
     }
   }
 
-  // ==========================================
-  // 3. OBTENER AVISOS DE SUMINISTRO
-  // ==========================================
-
+  // 3. OBTENER AVISOS DE SUMINISTRO (GET)
   Future<List<AvisoSuministro>> obtenerAvisosSuministro() async {
     if (useMockData) {
       await Future.delayed(const Duration(seconds: 1));
@@ -169,11 +171,18 @@ class ApiService {
         }).toList();
       }
 
-      throw Exception(
-        'Error al cargar avisos: HTTP ${response.statusCode}',
-      );
+      // Manejo de códigos de error para GET
+      switch (response.statusCode) {
+        case 404:
+          throw Exception('Error 404: No se encontraron avisos en el servidor.');
+        case 500:
+          throw Exception('Error 500: Error interno en el servidor de Backend.');
+        default:
+          throw Exception('Error al cargar avisos: HTTP ${response.statusCode}');
+      }
+
     } on TimeoutException {
-      throw Exception('Tiempo de espera agotado al consultar avisos');
+      throw Exception('Tiempo de espera agotado al consultar avisos.');
     } on http.ClientException catch (e) {
       throw Exception('Error de conexión: $e');
     } catch (e) {

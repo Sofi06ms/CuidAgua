@@ -13,7 +13,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = ApiService(useMockData: false);
 
   late Future<List<Reporte>> _futureReportes;
   late Future<List<AvisoSuministro>> _futureAvisos;

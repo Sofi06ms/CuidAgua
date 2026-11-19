@@ -168,27 +168,35 @@ Los roles están distribuidos de la siguiente manera:
 
 
 
-\## Flujo de trabajo con Git
 
+## Flujo de trabajo con Git
 
+El proyecto utiliza el modelo **Git Flow** para organizar el desarrollo colaborativo y controlar la integración de cambios mediante Git y GitHub.
 
-Se utilizan las siguientes ramas:
+### Ramas principales
 
+- `main`: contiene las versiones estables del proyecto.
+- `develop`: contiene la integración de las funcionalidades en desarrollo.
 
+### Ramas de trabajo
 
-\- `main`: contiene las versiones estables del proyecto.
+- `feature/*`: desarrollo de nuevas funcionalidades. Se crean desde `develop` y se integran en `develop`.
+- `fix/*`: corrección de errores durante el desarrollo. Se crean desde `develop` y se integran en `develop`.
+- `docs/*`: modificaciones de documentación. Se crean desde `develop` y se integran en `develop`.
+- `release/*`: preparación de versiones. Se crean desde `develop` y se integran en `main` y `develop`.
+- `hotfix/*`: correcciones urgentes de versiones estables. Se crean desde `main` y se integran en `main` y `develop`.
 
-\- `develop`: rama de integración para el desarrollo del proyecto.
+### Reglas de integración
 
-\- `feature/\*`: ramas destinadas a nuevas funcionalidades.
+1. No realizar cambios directamente en `main` ni en `develop`.
+2. Cada integrante debe trabajar en una rama correspondiente a su actividad.
+3. Las ramas de funcionalidades, correcciones y documentación deben partir de `develop`.
+4. Los cambios deben publicarse en GitHub y revisarse antes de integrarse.
+5. Los Pull Requests de desarrollo deben dirigirse a `develop`.
+6. Las versiones estables se incorporarán a `main`.
+7. Las correcciones urgentes deberán incorporarse también a `develop`.
 
-\- `fix/\*`: ramas destinadas a la corrección de errores.
-
-\- `docs/\*`: ramas destinadas a cambios en la documentación.
-
-
-
-Los cambios deben realizarse en ramas de trabajo y posteriormente integrarse mediante Pull Requests hacia `develop`.
+Para conocer los procedimientos detallados de creación, publicación e integración de ramas, consultar el archivo `CONTRIBUTING.md`.
 
 
 

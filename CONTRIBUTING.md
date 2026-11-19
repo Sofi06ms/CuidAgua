@@ -86,7 +86,3 @@ Una vez finalizado el trabajo, las ramas temporales podrán eliminarse después 
 ---
 
 **CuidAgua – Guía de colaboración y control de versiones.**
-
-## Prueba del flujo Git Flow
-
-Esta sección se agregó desde la rama docs/prueba-git-flow para verificar el proceso de publicación e integración mediante Pull Requests.

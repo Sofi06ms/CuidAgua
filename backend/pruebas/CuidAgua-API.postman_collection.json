@@ -1,15 +1,38 @@
 {
   "info": {
     "name": "CuidAgua API",
-    "description": "Pruebas de los endpoints iniciales de la API de CuidAgua. Ejecutar en orden: primero se obtienen los tokens de Keycloak y se guardan en variables de la colección.",
+    "description": "Pruebas de la API de CuidAgua: reportes (registro, filtros, cambio de estado, resumen) y avisos (CRUD y filtros). Ejecutar en orden: primero se obtienen los tokens de Keycloak y se guardan en variables de la colección.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "keycloakUrl", "value": "http://localhost:8180" },
-    { "key": "tokenCiudadano", "value": "" },
-    { "key": "tokenAdmin", "value": "" },
-    { "key": "fechaFutura", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8180"
+    },
+    {
+      "key": "tokenCiudadano",
+      "value": ""
+    },
+    {
+      "key": "tokenAdmin",
+      "value": ""
+    },
+    {
+      "key": "fechaFutura",
+      "value": ""
+    },
+    {
+      "key": "reporteId",
+      "value": ""
+    },
+    {
+      "key": "avisoId",
+      "value": ""
+    }
   ],
   "item": [
     {
@@ -54,14 +77,31 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
             "body": {
               "mode": "urlencoded",
               "urlencoded": [
-                { "key": "grant_type", "value": "password" },
-                { "key": "client_id", "value": "cuidagua-app" },
-                { "key": "username", "value": "ciudadano1" },
-                { "key": "password", "value": "ciudadano123" }
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "cuidagua-app"
+                },
+                {
+                  "key": "username",
+                  "value": "ciudadano1"
+                },
+                {
+                  "key": "password",
+                  "value": "ciudadano123"
+                }
               ]
             },
             "url": "{{keycloakUrl}}/realms/cuidagua/protocol/openid-connect/token"
@@ -85,14 +125,31 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
             "body": {
               "mode": "urlencoded",
               "urlencoded": [
-                { "key": "grant_type", "value": "password" },
-                { "key": "client_id", "value": "cuidagua-app" },
-                { "key": "username", "value": "admin1" },
-                { "key": "password", "value": "admin123" }
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "cuidagua-app"
+                },
+                {
+                  "key": "username",
+                  "value": "admin1"
+                },
+                {
+                  "key": "password",
+                  "value": "admin123"
+                }
               ]
             },
             "url": "{{keycloakUrl}}/realms/cuidagua/protocol/openid-connect/token"
@@ -117,7 +174,8 @@
                   "  pm.expect(json.exito).to.eql(true);",
                   "  pm.expect(json.datos.estado).to.eql('PENDIENTE');",
                   "  pm.expect(json.datos.usuario).to.eql('ciudadano1');",
-                  "});"
+                  "});",
+                  "pm.collectionVariables.set('reporteId', pm.response.json().datos.id);"
                 ]
               }
             }
@@ -125,12 +183,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{tokenCiudadano}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCiudadano}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"FUGA\",\n  \"descripcion\": \"Fuga de agua en la banqueta frente al número 25\",\n  \"direccion\": \"Av. Juárez 25\",\n  \"colonia\": \"Centro\",\n  \"latitud\": 19.4326,\n  \"longitud\": -99.1332,\n  \"fotoUrl\": \"https://ejemplo.com/fotos/fuga1.jpg\"\n}"
+              "raw": "{\n  \"tipo\": \"FUGA\",\n  \"descripcion\": \"Fuga de agua en la banqueta frente al número 25\",\n  \"direccion\": \"Av. Juárez 25\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"latitud\": 19.4326,\n  \"longitud\": -99.1332,\n  \"fotoUrl\": \"https://ejemplo.com/fotos/fuga1.jpg\"\n}"
             },
             "url": "{{baseUrl}}/api/reportes"
           }
@@ -150,6 +214,7 @@
                   "  pm.expect(json.errores).to.have.property('tipo');",
                   "  pm.expect(json.errores).to.have.property('descripcion');",
                   "  pm.expect(json.errores).to.have.property('latitud');",
+                  "  pm.expect(pm.response.json().errores).to.have.property('zona');",
                   "});"
                 ]
               }
@@ -158,12 +223,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{tokenCiudadano}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCiudadano}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"descripcion\": \"Corta\",\n  \"direccion\": \"\",\n  \"colonia\": \"Centro\",\n  \"latitud\": 120\n}"
+              "raw": "{\n  \"descripcion\": \"Corta\",\n  \"direccion\": \"\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"latitud\": 120\n}"
             },
             "url": "{{baseUrl}}/api/reportes"
           }
@@ -186,10 +257,15 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"SIN_AGUA\",\n  \"descripcion\": \"No hay agua desde ayer en toda la calle\",\n  \"direccion\": \"Calle 5 de Mayo 10\",\n  \"colonia\": \"Centro\"\n}"
+              "raw": "{\n  \"tipo\": \"SIN_AGUA\",\n  \"descripcion\": \"No hay agua desde ayer en toda la calle\",\n  \"direccion\": \"Calle 5 de Mayo 10\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\"\n}"
             },
             "url": "{{baseUrl}}/api/reportes"
           }
@@ -235,10 +311,321 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/api/reportes?colonia=Centro",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reportes"],
-              "query": [{ "key": "colonia", "value": "Centro" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reportes"
+              ],
+              "query": [
+                {
+                  "key": "colonia",
+                  "value": "Centro"
+                }
+              ]
             }
+          }
+        },
+        {
+          "name": "Filtrar reportes por estado, tipo y zona (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Todos cumplen los filtros', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "  json.datos.forEach(r => { pm.expect(r.estado).to.eql('PENDIENTE'); pm.expect(r.tipo).to.eql('FUGA'); pm.expect(r.zona.toLowerCase()).to.eql('zona centro'); });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/reportes?estado=PENDIENTE&tipo=FUGA&zona=Zona Centro"
+          }
+        },
+        {
+          "name": "Filtro con estado inválido (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Indica los valores permitidos', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(false);",
+                  "  pm.expect(json.errores.estado).to.include('PENDIENTE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/reportes?estado=CERRADO"
+          }
+        },
+        {
+          "name": "Detalle de reporte (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Devuelve el reporte creado', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "  pm.expect(json.datos.id).to.eql(Number(pm.collectionVariables.get('reporteId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/reportes/{{reporteId}}"
+          }
+        },
+        {
+          "name": "Detalle de reporte inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/reportes/999999"
+          }
+        },
+        {
+          "name": "Mis reportes (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Solo reportes de ciudadano1', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "  json.datos.forEach(r => pm.expect(r.usuario).to.eql('ciudadano1'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCiudadano}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/mios"
+          }
+        },
+        {
+          "name": "Cambiar estado como ciudadano (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Requiere rol ADMIN', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCiudadano}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_PROCESO\"\n}"
+            },
+            "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
+          }
+        },
+        {
+          "name": "Cambiar estado a EN_PROCESO como admin (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El estado cambia y se registra quién lo hizo', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "  pm.expect(json.datos.estado).to.eql('EN_PROCESO');",
+                  "  pm.expect(json.datos.actualizadoPor).to.eql('admin1');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_PROCESO\",\n  \"comentario\": \"Cuadrilla asignada\"\n}"
+            },
+            "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
+          }
+        },
+        {
+          "name": "Regresar a PENDIENTE (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Transición no permitida', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"PENDIENTE\"\n}"
+            },
+            "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
+          }
+        },
+        {
+          "name": "Rechazar sin comentario (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El comentario es obligatorio al rechazar', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(false);",
+                  "  pm.expect(json.errores).to.have.property('comentario');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"RECHAZADO\"\n}"
+            },
+            "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
+          }
+        },
+        {
+          "name": "Resumen para el panel (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Incluye conteos por estado y tipo', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "  pm.expect(json.datos.porEstado).to.have.all.keys('PENDIENTE', 'EN_PROCESO', 'RESUELTO', 'RECHAZADO');",
+                  "  pm.expect(json.datos.total).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/resumen"
           }
         }
       ]
@@ -272,7 +659,8 @@
                   "  const json = pm.response.json();",
                   "  pm.expect(json.exito).to.eql(true);",
                   "  pm.expect(json.datos.creadoPor).to.eql('admin1');",
-                  "});"
+                  "});",
+                  "pm.collectionVariables.set('avisoId', pm.response.json().datos.id);"
                 ]
               }
             }
@@ -280,12 +668,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"titulo\": \"Corte programado de agua\",\n  \"mensaje\": \"Se suspenderá el servicio por mantenimiento de la red principal.\",\n  \"colonia\": \"Centro\",\n  \"tipo\": \"CORTE\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
+              "raw": "{\n  \"titulo\": \"Corte programado de agua\",\n  \"mensaje\": \"Se suspenderá el servicio por mantenimiento de la red principal.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"CORTE\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
             },
             "url": "{{baseUrl}}/api/avisos"
           }
@@ -309,12 +703,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{tokenCiudadano}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCiudadano}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"titulo\": \"Aviso no autorizado\",\n  \"mensaje\": \"Un ciudadano no debería poder publicar este aviso.\",\n  \"colonia\": \"Centro\",\n  \"tipo\": \"CORTE\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
+              "raw": "{\n  \"titulo\": \"Aviso no autorizado\",\n  \"mensaje\": \"Un ciudadano no debería poder publicar este aviso.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"CORTE\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
             },
             "url": "{{baseUrl}}/api/avisos"
           }
@@ -338,12 +738,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"titulo\": \"Restablecimiento atrasado\",\n  \"mensaje\": \"Este aviso tiene una fecha de restablecimiento en el pasado.\",\n  \"colonia\": \"Centro\",\n  \"tipo\": \"RESTABLECIMIENTO\",\n  \"fechaRestablecimiento\": \"2020-01-01T08:00:00\"\n}"
+              "raw": "{\n  \"titulo\": \"Restablecimiento atrasado\",\n  \"mensaje\": \"Este aviso tiene una fecha de restablecimiento en el pasado.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"RESTABLECIMIENTO\",\n  \"fechaRestablecimiento\": \"2020-01-01T08:00:00\"\n}"
             },
             "url": "{{baseUrl}}/api/avisos"
           }
@@ -389,10 +795,184 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/api/avisos?colonia=Centro",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "avisos"],
-              "query": [{ "key": "colonia", "value": "Centro" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "avisos"
+              ],
+              "query": [
+                {
+                  "key": "colonia",
+                  "value": "Centro"
+                }
+              ]
             }
+          }
+        },
+        {
+          "name": "Filtrar avisos vigentes por zona y tipo (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Todos vigentes y del tipo pedido', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "  json.datos.forEach(a => { pm.expect(a.vigente).to.eql(true); pm.expect(a.tipo).to.eql('CORTE'); });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/avisos?vigentes=true&zona=Zona Centro&tipo=CORTE"
+          }
+        },
+        {
+          "name": "Detalle de aviso (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Devuelve el aviso creado', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/avisos/{{avisoId}}"
+          }
+        },
+        {
+          "name": "Editar aviso como admin (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Se actualiza el aviso', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "  pm.expect(json.datos.tipo).to.eql('MANTENIMIENTO');",
+                  "  pm.expect(json.datos.fechaActualizacion).to.not.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Corte programado de agua (horario ajustado)\",\n  \"mensaje\": \"El servicio se restablecerá más tarde por trabajos adicionales en la red.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"MANTENIMIENTO\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/avisos/{{avisoId}}"
+          }
+        },
+        {
+          "name": "Eliminar aviso como ciudadano (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Requiere rol ADMIN', function () {",
+                  "  pm.response.to.have.status(403);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCiudadano}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/avisos/{{avisoId}}"
+          }
+        },
+        {
+          "name": "Eliminar aviso como admin (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Se elimina el aviso', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/avisos/{{avisoId}}"
+          }
+        },
+        {
+          "name": "Detalle de aviso eliminado (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Ya no existe', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.exito).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/avisos/{{avisoId}}"
           }
         }
       ]

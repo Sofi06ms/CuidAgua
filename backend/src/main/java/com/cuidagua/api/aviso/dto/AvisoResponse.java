@@ -11,11 +11,14 @@ public record AvisoResponse(
         String titulo,
         String mensaje,
         String colonia,
+        String zona,
         TipoAviso tipo,
         LocalDateTime fechaInicio,
         LocalDateTime fechaRestablecimiento,
+        boolean vigente,
         String creadoPor,
-        LocalDateTime fechaCreacion
+        LocalDateTime fechaCreacion,
+        LocalDateTime fechaActualizacion
 ) {
 
     public static AvisoResponse desde(Aviso aviso) {
@@ -24,10 +27,13 @@ public record AvisoResponse(
                 aviso.getTitulo(),
                 aviso.getMensaje(),
                 aviso.getColonia(),
+                aviso.getZona(),
                 aviso.getTipo(),
                 aviso.getFechaInicio(),
                 aviso.getFechaRestablecimiento(),
+                aviso.estaVigente(LocalDateTime.now()),
                 aviso.getCreadoPorNombre(),
-                aviso.getFechaCreacion());
+                aviso.getFechaCreacion(),
+                aviso.getFechaActualizacion());
     }
 }

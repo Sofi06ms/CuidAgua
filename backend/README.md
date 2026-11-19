@@ -30,29 +30,37 @@ backend/
     │   │   ├── CuidaguaApiApplication.java    # Punto de entrada
     │   │   ├── config/                        # Configuración transversal
     │   │   │   ├── SecurityConfig.java        # Rutas públicas/protegidas, JWT, CORS
+    │   │   │   ├── OpenApiConfig.java         # Swagger / OpenAPI con autenticación Bearer
     │   │   │   ├── KeycloakRealmRoleConverter.java  # Lee realm_access.roles del token
     │   │   │   └── JsonSecurityHandlers.java  # Respuestas JSON para 401 y 403
     │   │   ├── common/                        # Código compartido por todos los módulos
     │   │   │   ├── dto/ApiResponse.java       # Formato único de respuesta
-    │   │   │   ├── exception/                 # Manejo global de errores
-    │   │   │   └── util/                      # Utilidades
+    │   │   │   ├── exception/                 # Manejo global de errores (400, 404, 409...)
+    │   │   │   └── util/                      # TextoUtils, JwtUtils
     │   │   ├── reporte/                       # Módulo de reportes ciudadanos
-    │   │   │   ├── entity/                    # Reporte, TipoReporte, EstadoReporte
-    │   │   │   ├── dto/                       # ReporteRequest, ReporteResponse
+    │   │   │   ├── entity/                    # Reporte, TipoReporte, EstadoReporte (flujo de estados)
+    │   │   │   ├── dto/                       # Request/Response, CambioEstadoRequest, ReporteFiltro, Resumen
     │   │   │   ├── repository/                # ReporteRepository (Spring Data JPA)
+    │   │   │   ├── specification/             # Consulta dinámica según los filtros
     │   │   │   ├── service/                   # ReporteService (lógica de negocio)
     │   │   │   └── controller/                # ReporteController (/api/reportes)
     │   │   └── aviso/                         # Módulo de avisos de suministro
     │   │       ├── entity/                    # Aviso, TipoAviso
-    │   │       ├── dto/                       # AvisoRequest, AvisoResponse
+    │   │       ├── dto/                       # AvisoRequest, AvisoResponse, AvisoFiltro
     │   │       ├── repository/                # AvisoRepository
+    │   │       ├── specification/             # Consulta dinámica según los filtros
     │   │       ├── service/                   # AvisoService
     │   │       └── controller/                # AvisoController (/api/avisos)
     │   └── resources/
     │       ├── application.yml                # Configuración (lee variables de entorno)
     │       └── db/migration/
-    │           └── V1__crear_tablas.sql       # Tablas reportes y avisos
-    └── test/java/com/cuidagua/api/            # Pruebas de controladores y seguridad
+    │           ├── V1__crear_tablas.sql       # Tablas reportes y avisos
+    │           └── V2__zona_y_seguimiento.sql # Columna zona, seguimiento de estado, índices
+    └── test/
+        ├── java/com/cuidagua/api/
+        │   ├── reporte/, aviso/               # Pruebas de controladores y seguridad (sin BD)
+        │   └── integracion/ApiPostgresIT.java # Pruebas de integración API + PostgreSQL
+        └── resources/application-it.yml       # Perfil "it": usa el esquema "pruebas"
 ```
 
 **Responsabilidad de cada capa:**
@@ -105,18 +113,23 @@ En la terminal del Codespace (ya estás en la carpeta `backend`):
 mvn spring-boot:run
 ```
 
-Al arrancar, Flyway crea las tablas `reportes` y `avisos`. Comprueba que la API funciona:
+Al arrancar, Flyway crea o actualiza las tablas `reportes` y `avisos` (migraciones V1, V2...). Comprueba que la API funciona:
 
 ```bash
 curl http://localhost:8080/actuator/health
 # {"status":"UP"}
 ```
 
-Para ejecutar las pruebas automáticas (no necesitan base de datos ni Keycloak):
+**Documentación interactiva (Swagger):** abre `http://localhost:8080/swagger-ui.html`. Ahí aparecen todas las rutas con sus parámetros y puedes probarlas. Para las rutas protegidas, pulsa **Authorize** y pega el `access_token` de Keycloak (ver sección 6). El JSON de OpenAPI está en `http://localhost:8080/v3/api-docs`.
 
-```bash
-mvn test
-```
+### Pruebas automáticas
+
+| Comando      | Qué ejecuta | Necesita |
+|--------------|-------------|----------|
+| `mvn test`   | Pruebas de controladores, validaciones y seguridad (`*Test.java`) | Nada (sin BD ni Keycloak) |
+| `mvn verify` | Lo anterior + pruebas de integración API ↔ PostgreSQL (`*IT.java`) | PostgreSQL en marcha |
+
+Las pruebas de integración recorren controlador → servicio → repositorio → PostgreSQL con las migraciones reales de Flyway. Usan el esquema **`pruebas`** de la base `cuidagua` (se crea solo), así que **no tocan los datos de desarrollo** del esquema `public`. Solo se simula el token de Keycloak. Para usar otra base, define `DB_URL_TEST`.
 
 ### Variables de entorno
 
@@ -133,15 +146,56 @@ mvn test
 
 ## 4. Endpoints
 
-| Método | Ruta            | Acceso              | Descripción |
-|--------|-----------------|---------------------|-------------|
-| POST   | `/api/reportes` | Token (cualquier usuario) | Registra una incidencia. |
-| GET    | `/api/reportes` | Público             | Lista reportes del más reciente al más antiguo. Filtro opcional `?colonia=`. |
-| POST   | `/api/avisos`   | Token con rol **ADMIN** | Publica un aviso de suministro. |
-| GET    | `/api/avisos`   | Público             | Lista avisos (más recientes primero). Filtro opcional `?colonia=`. |
-| GET    | `/actuator/health` | Público          | Estado de la API. |
+### Reportes (`/api/reportes`)
 
-El filtro `colonia` no distingue mayúsculas de minúsculas (`centro` = `Centro`).
+| Método | Ruta                         | Acceso                    | Descripción |
+|--------|------------------------------|---------------------------|-------------|
+| POST   | `/api/reportes`              | Token (cualquier usuario) | Registra una incidencia (inicia en `PENDIENTE`). |
+| GET    | `/api/reportes`              | Público                   | Lista reportes, más recientes primero. Acepta filtros (ver abajo). |
+| GET    | `/api/reportes/{id}`         | Público                   | Detalle de un reporte. 404 si no existe. |
+| GET    | `/api/reportes/mios`         | Token (cualquier usuario) | Reportes creados por el usuario del token. |
+| PATCH  | `/api/reportes/{id}/estado`  | Token con rol **ADMIN**   | Cambia el estado de un reporte. |
+| GET    | `/api/reportes/resumen`      | Token con rol **ADMIN**   | Conteos por estado y por tipo para el panel. |
+
+**Filtros de `GET /api/reportes`** (opcionales y combinables):
+
+| Parámetro | Valores | Ejemplo |
+|-----------|---------|---------|
+| `estado`  | `PENDIENTE`, `EN_PROCESO`, `RESUELTO`, `RECHAZADO` | `?estado=PENDIENTE` |
+| `tipo`    | `FUGA`, `TUBERIA_ROTA`, `SIN_AGUA`, `BAJA_PRESION`, `OTRO` | `?tipo=FUGA` |
+| `zona`    | texto | `?zona=Zona Centro` |
+| `colonia` | texto | `?colonia=Centro` |
+
+Ejemplo combinado: `GET /api/reportes?estado=PENDIENTE&tipo=FUGA&zona=Zona%20Centro`
+
+### Avisos (`/api/avisos`)
+
+| Método | Ruta               | Acceso                  | Descripción |
+|--------|--------------------|-------------------------|-------------|
+| POST   | `/api/avisos`      | Token con rol **ADMIN** | Publica un aviso de suministro. |
+| GET    | `/api/avisos`      | Público                 | Lista avisos, más recientes primero. Acepta filtros (ver abajo). |
+| GET    | `/api/avisos/{id}` | Público                 | Detalle de un aviso. 404 si no existe. |
+| PUT    | `/api/avisos/{id}` | Token con rol **ADMIN** | Edita un aviso (mismos campos que al crear; conserva el autor). |
+| DELETE | `/api/avisos/{id}` | Token con rol **ADMIN** | Elimina un aviso. |
+
+**Filtros de `GET /api/avisos`** (opcionales y combinables):
+
+| Parámetro  | Valores | Ejemplo |
+|------------|---------|---------|
+| `zona`     | texto | `?zona=Zona Centro` |
+| `colonia`  | texto | `?colonia=Centro` |
+| `tipo`     | `CORTE`, `RESTABLECIMIENTO`, `MANTENIMIENTO`, `BAJA_PRESION` | `?tipo=CORTE` |
+| `vigentes` | `true` (aún no llega la fecha de restablecimiento) / `false` (ya vencidos) | `?vigentes=true` |
+
+### Otros
+
+| Método | Ruta                 | Acceso  | Descripción |
+|--------|----------------------|---------|-------------|
+| GET    | `/actuator/health`   | Público | Estado de la API. |
+| GET    | `/swagger-ui.html`   | Público | Documentación interactiva. |
+| GET    | `/v3/api-docs`       | Público | Especificación OpenAPI en JSON. |
+
+Los filtros de texto (`zona`, `colonia`) no distinguen mayúsculas de minúsculas (`zona centro` = `Zona Centro`). Un valor de enum desconocido en un filtro responde 400 con la lista de valores permitidos.
 
 ### Seguridad
 
@@ -158,11 +212,48 @@ El filtro `colonia` no distingue mayúsculas de minúsculas (`centro` = `Centro`
 | `descripcion` | texto   | Sí | 10 a 500 caracteres |
 | `direccion`   | texto   | Sí | máx. 255 caracteres |
 | `colonia`     | texto   | Sí | máx. 120 caracteres |
-| `latitud`     | número  | No | entre -90 y 90 |
-| `longitud`    | número  | No | entre -180 y 180 |
+| `zona`        | texto   | Sí | máx. 80 caracteres |
+| `latitud`     | número  | No | entre -90 y 90; se envía junto con `longitud` |
+| `longitud`    | número  | No | entre -180 y 180; se envía junto con `latitud` |
 | `fotoUrl`     | texto   | No | URL válida, máx. 500 caracteres |
 
-El servidor asigna `estado = PENDIENTE`, la fecha de creación y el usuario del token.
+El servidor asigna `estado = PENDIENTE`, la fecha de creación y el usuario del token. Los textos se guardan sin espacios al inicio ni al final.
+
+### Cambio de estado: `PATCH /api/reportes/{id}/estado`
+
+```json
+{ "estado": "EN_PROCESO", "comentario": "Cuadrilla asignada" }
+```
+
+| Campo        | Obligatorio | Reglas |
+|--------------|-------------|--------|
+| `estado`     | Sí | nuevo estado |
+| `comentario` | Solo al pasar a `RECHAZADO` | máx. 500 caracteres |
+
+Flujo permitido:
+
+```
+PENDIENTE  ──► EN_PROCESO ──► RESUELTO
+    │              │
+    ├──► RESUELTO  └──► RECHAZADO
+    └──► RECHAZADO
+```
+
+`RESUELTO` y `RECHAZADO` son finales. Una transición no permitida (o al mismo estado) responde **409**. La respuesta incluye `comentarioEstado`, `actualizadoPor` (admin del token) y `fechaActualizacion`.
+
+### Respuesta de `GET /api/reportes/resumen`
+
+```json
+{
+  "exito": true,
+  "mensaje": "Resumen de reportes",
+  "datos": {
+    "total": 3,
+    "porEstado": { "PENDIENTE": 2, "EN_PROCESO": 1, "RESUELTO": 0, "RECHAZADO": 0 },
+    "porTipo": { "FUGA": 3, "TUBERIA_ROTA": 0, "SIN_AGUA": 0, "BAJA_PRESION": 0, "OTRO": 0 }
+  }
+}
+```
 
 ### Campos de `POST /api/avisos`
 
@@ -171,6 +262,7 @@ El servidor asigna `estado = PENDIENTE`, la fecha de creación y el usuario del 
 | `titulo`                | texto  | Sí | 5 a 120 caracteres |
 | `mensaje`               | texto  | Sí | 10 a 1000 caracteres |
 | `colonia`               | texto  | Sí | máx. 120 caracteres |
+| `zona`                  | texto  | Sí | máx. 80 caracteres |
 | `tipo`                  | texto  | Sí | `CORTE`, `RESTABLECIMIENTO`, `MANTENIMIENTO`, `BAJA_PRESION` |
 | `fechaInicio`           | fecha  | No | debe ser anterior a `fechaRestablecimiento` |
 | `fechaRestablecimiento` | fecha  | Sí | debe estar en el futuro |
@@ -189,10 +281,12 @@ Todas las respuestas tienen la misma forma, para que Flutter las procese igual:
 | Código | Cuándo |
 |--------|--------|
 | 201 | Se creó un reporte o aviso |
-| 200 | Consulta correcta |
-| 400 | Datos inválidos (validación o JSON mal formado) |
+| 200 | Consulta, cambio de estado, edición o eliminación correctos |
+| 400 | Datos inválidos (validación, JSON mal formado o filtro con valor desconocido) |
 | 401 | No se envió token, o es inválido o expiró |
 | 403 | El token es válido pero el usuario no tiene el rol necesario |
+| 404 | No existe el reporte o aviso con ese `id` |
+| 409 | El cambio de estado no está permitido en el estado actual del reporte |
 
 ### 201 – Reporte creado
 
@@ -206,12 +300,16 @@ Todas las respuestas tienen la misma forma, para que Flutter las procese igual:
     "descripcion": "Fuga de agua en la banqueta frente al número 25",
     "direccion": "Av. Juárez 25",
     "colonia": "Centro",
+    "zona": "Zona Centro",
     "latitud": 19.4326,
     "longitud": -99.1332,
     "fotoUrl": "https://ejemplo.com/fotos/fuga1.jpg",
     "estado": "PENDIENTE",
     "usuario": "ciudadano1",
-    "fechaCreacion": "2026-11-12T10:15:30.123456"
+    "fechaCreacion": "2026-11-12T10:15:30.123456",
+    "comentarioEstado": null,
+    "actualizadoPor": null,
+    "fechaActualizacion": null
   }
 }
 ```
@@ -227,11 +325,14 @@ Todas las respuestas tienen la misma forma, para que Flutter las procese igual:
     "titulo": "Corte programado de agua",
     "mensaje": "Se suspenderá el servicio por mantenimiento de la red principal.",
     "colonia": "Centro",
+    "zona": "Zona Centro",
     "tipo": "CORTE",
     "fechaInicio": null,
     "fechaRestablecimiento": "2026-11-15T08:00:00",
+    "vigente": true,
     "creadoPor": "admin1",
-    "fechaCreacion": "2026-11-12T10:20:00.654321"
+    "fechaCreacion": "2026-11-12T10:20:00.654321",
+    "fechaActualizacion": null
   }
 }
 ```
@@ -299,6 +400,28 @@ Con un valor de enum desconocido:
 }
 ```
 
+### 404 – No encontrado
+
+```json
+{
+  "exito": false,
+  "mensaje": "No existe un reporte con id 99",
+  "errores": { "id": "No encontrado" }
+}
+```
+
+### 409 – Cambio de estado no permitido
+
+```json
+{
+  "exito": false,
+  "mensaje": "No se puede realizar la operación",
+  "errores": {
+    "estado": "El reporte está en estado RESUELTO y ya no puede cambiar"
+  }
+}
+```
+
 ---
 
 ## 6. Probar los endpoints
@@ -313,7 +436,12 @@ El Codespace incluye Node.js, así que puedes correr toda la colección en otra 
 npx --yes newman run pruebas/CuidAgua-API.postman_collection.json
 ```
 
-La colección pide los tokens, los guarda y verifica cada caso: reporte válido (201), inválido (400), sin token (401), listados (200), aviso como admin (201), aviso como ciudadano (403) y aviso con fecha pasada (400).
+La colección pide los tokens, los guarda y verifica cada caso:
+
+- **Reportes:** crear válido (201), inválido (400), sin token (401); listados y filtros por estado/tipo/zona (200); filtro inválido (400); detalle (200) e inexistente (404); mis reportes; cambio de estado como ciudadano (403), como admin (200), transición no permitida (409), rechazo sin comentario (400); resumen del panel.
+- **Avisos:** crear como admin (201), como ciudadano (403), con fecha pasada (400); listados y filtro de vigentes por zona/tipo; detalle; editar (200); eliminar como ciudadano (403) y como admin (200); detalle de aviso eliminado (404).
+
+Las peticiones guardan los ids creados en las variables `reporteId` y `avisoId`, por eso se ejecutan en orden.
 
 ### Opción B: Thunder Client o Postman
 
@@ -332,10 +460,15 @@ TOKEN=$(curl -s -X POST http://localhost:8180/realms/cuidagua/protocol/openid-co
 # 2. Crear un reporte
 curl -i -X POST http://localhost:8080/api/reportes \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"tipo":"FUGA","descripcion":"Fuga de agua frente al número 25","direccion":"Av. Juárez 25","colonia":"Centro"}'
+  -d '{"tipo":"FUGA","descripcion":"Fuga de agua frente al número 25","direccion":"Av. Juárez 25","colonia":"Centro","zona":"Zona Centro"}'
 
-# 3. Listar reportes de una colonia
-curl -s "http://localhost:8080/api/reportes?colonia=Centro"
+# 3. Listar reportes pendientes de fugas en una zona
+curl -s "http://localhost:8080/api/reportes?estado=PENDIENTE&tipo=FUGA&zona=Zona%20Centro"
+
+# 4. Cambiar el estado (requiere token de admin1 en $TOKEN_ADMIN)
+curl -s -X PATCH http://localhost:8080/api/reportes/1/estado \
+  -H "Authorization: Bearer $TOKEN_ADMIN" -H "Content-Type: application/json" \
+  -d '{"estado":"EN_PROCESO","comentario":"Cuadrilla asignada"}'
 ```
 
 Para el token de administrador usa `username=admin1` y `password=admin123`.
@@ -347,4 +480,6 @@ Para el token de administrador usa `username=admin1` y `password=admin123`.
 - **Issuer del token:** la API acepta tokens cuyo `iss` sea `http://localhost:8180/realms/cuidagua`. Cuando la app Flutter se conecte desde un emulador o dispositivo usando la URL pública del Codespace, el `iss` cambiará. En ese caso hay que configurar `KC_HOSTNAME` en Keycloak y ajustar `KEYCLOAK_ISSUER_URI`.
 - **docker-compose.yml de la raíz:** sigue usando `postgres:17` y `cuidagua_db`. El entorno de desarrollo del backend (`docker-compose.dev.yml`) usa PostgreSQL 16 con la base `cuidagua`. Conviene unificarlos cuando se cierren las decisiones pendientes de `docs/DECISIONES_TECNICAS.md`.
 - **Nuevas tablas o columnas:** crea un archivo nuevo en `src/main/resources/db/migration/` (`V2__descripcion.sql`, `V3__...`). No modifiques una migración que ya se ejecutó.
-- **Estados de reporte:** además de `PENDIENTE` existen `EN_PROCESO`, `RESUELTO` y `RECHAZADO`, preparados para cuando se agregue el cambio de estado.
+- **Campo `zona`:** se agregó en la migración V2 y es obligatorio en los reportes y avisos nuevos. Los registros creados antes de V2 tienen `zona = null` y no aparecen al filtrar por zona.
+- **App Flutter:** ahora debe enviar `zona` al crear reportes. Las respuestas agregan campos nuevos (`zona`, `comentarioEstado`, `actualizadoPor`, `fechaActualizacion`, `vigente`); los campos anteriores no cambiaron.
+- **Swagger en producción:** desactívalo con `springdoc.api-docs.enabled=false` y `springdoc.swagger-ui.enabled=false`.

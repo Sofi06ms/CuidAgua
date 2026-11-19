@@ -26,6 +26,10 @@ public record ReporteRequest(
         @Size(max = 120, message = "La colonia no puede superar los 120 caracteres")
         String colonia,
 
+        @NotBlank(message = "La zona es obligatoria")
+        @Size(max = 80, message = "La zona no puede superar los 80 caracteres")
+        String zona,
+
         @DecimalMin(value = "-90.0", message = "La latitud debe estar entre -90 y 90")
         @DecimalMax(value = "90.0", message = "La latitud debe estar entre -90 y 90")
         Double latitud,

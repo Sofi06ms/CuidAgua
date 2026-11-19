@@ -1,0 +1,14 @@
+# Perfil "it": pruebas de integración contra el PostgreSQL del Dev Container.
+# Usan el esquema "pruebas" (Flyway lo crea y migra) para no tocar los datos de desarrollo.
+spring:
+  datasource:
+    url: ${DB_URL_TEST:jdbc:postgresql://localhost:5432/cuidagua?currentSchema=pruebas}
+    username: ${DB_USER:cuidagua}
+    password: ${DB_PASSWORD:cuidagua}
+  flyway:
+    schemas: pruebas
+    default-schema: pruebas
+  jpa:
+    properties:
+      hibernate:
+        default_schema: pruebas

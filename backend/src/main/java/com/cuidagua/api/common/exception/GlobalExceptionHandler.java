@@ -48,6 +48,18 @@ public class GlobalExceptionHandler {
         return respuesta(HttpStatus.BAD_REQUEST, MSG_VALIDACION, Map.of(ex.getCampo(), ex.getMessage()));
     }
 
+    /** Recurso pedido por id que no existe. */
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<ApiResponse<Void>> manejarRecursoNoEncontrado(RecursoNoEncontradoException ex) {
+        return respuesta(HttpStatus.NOT_FOUND, ex.getMessage(), Map.of("id", "No encontrado"));
+    }
+
+    /** Operación incompatible con el estado actual (ej. cambiar un reporte RESUELTO). */
+    @ExceptionHandler(ConflictoException.class)
+    public ResponseEntity<ApiResponse<Void>> manejarConflicto(ConflictoException ex) {
+        return respuesta(HttpStatus.CONFLICT, "No se puede realizar la operación", Map.of(ex.getCampo(), ex.getMessage()));
+    }
+
     /** JSON mal formado, valores de enum desconocidos o fechas con formato incorrecto. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> manejarJsonInvalido(HttpMessageNotReadableException ex) {
@@ -62,8 +74,11 @@ public class GlobalExceptionHandler {
     /** Parámetros de URL con tipo incorrecto. */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> manejarTipoParametro(MethodArgumentTypeMismatchException ex) {
-        return respuesta(HttpStatus.BAD_REQUEST, MSG_VALIDACION,
-                Map.of(ex.getName(), "El valor '" + ex.getValue() + "' no es válido"));
+        Class<?> tipo = ex.getRequiredType();
+        String motivo = tipo != null && tipo.isEnum()
+                ? "Valor '" + ex.getValue() + "' no válido. Valores permitidos: " + valoresEnum(tipo)
+                : "El valor '" + ex.getValue() + "' no es válido";
+        return respuesta(HttpStatus.BAD_REQUEST, MSG_VALIDACION, Map.of(ex.getName(), motivo));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
@@ -94,6 +109,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(ApiResponse.error(mensaje, errores));
     }
 
+    private String valoresEnum(Class<?> tipoEnum) {
+        return Arrays.stream(tipoEnum.getEnumConstants())
+                .map(Object::toString)
+                .collect(Collectors.joining(", "));
+    }
+
     private String rutaCampo(MismatchedInputException ex) {
         return ex.getPath().stream()
                 .map(ref -> ref.getFieldName() != null ? ref.getFieldName() : "[" + ref.getIndex() + "]")
@@ -103,10 +124,7 @@ public class GlobalExceptionHandler {
     private String motivoFormato(MismatchedInputException ex) {
         Class<?> tipo = ex.getTargetType();
         if (tipo != null && tipo.isEnum()) {
-            String permitidos = Arrays.stream(tipo.getEnumConstants())
-                    .map(Object::toString)
-                    .collect(Collectors.joining(", "));
-            return "Valor no válido. Valores permitidos: " + permitidos;
+            return "Valor no válido. Valores permitidos: " + valoresEnum(tipo);
         }
         if (tipo != null && Temporal.class.isAssignableFrom(tipo)) {
             return "Formato de fecha no válido. Usa yyyy-MM-ddTHH:mm:ss (ej. 2026-11-20T08:00:00)";

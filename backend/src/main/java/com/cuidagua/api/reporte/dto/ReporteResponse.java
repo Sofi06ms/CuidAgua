@@ -13,12 +13,16 @@ public record ReporteResponse(
         String descripcion,
         String direccion,
         String colonia,
+        String zona,
         Double latitud,
         Double longitud,
         String fotoUrl,
         EstadoReporte estado,
         String usuario,
-        LocalDateTime fechaCreacion
+        LocalDateTime fechaCreacion,
+        String comentarioEstado,
+        String actualizadoPor,
+        LocalDateTime fechaActualizacion
 ) {
 
     public static ReporteResponse desde(Reporte reporte) {
@@ -28,11 +32,15 @@ public record ReporteResponse(
                 reporte.getDescripcion(),
                 reporte.getDireccion(),
                 reporte.getColonia(),
+                reporte.getZona(),
                 reporte.getLatitud(),
                 reporte.getLongitud(),
                 reporte.getFotoUrl(),
                 reporte.getEstado(),
                 reporte.getUsuarioNombre(),
-                reporte.getFechaCreacion());
+                reporte.getFechaCreacion(),
+                reporte.getComentarioEstado(),
+                reporte.getActualizadoPor(),
+                reporte.getFechaActualizacion());
     }
 }

@@ -1,39 +1,9 @@
 {
   "info": {
     "name": "CuidAgua API",
-    "description": "Pruebas de la API de CuidAgua: reportes (registro, filtros, cambio de estado, resumen) y avisos (CRUD y filtros). Ejecutar en orden: primero se obtienen los tokens de Keycloak y se guardan en variables de la colección.",
+    "description": "Pruebas de la API de CuidAgua: zonas, reportes (registro con folio y evidencias, filtros por estado/categoría/zona, cambio de estado con historial, resumen) y avisos (CRUD y filtros). Ejecutar en orden: primero se obtienen los tokens de Keycloak (ciudadano1, personal1, admin1) y se guardan en variables de la colección.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "variable": [
-    {
-      "key": "baseUrl",
-      "value": "http://localhost:8080"
-    },
-    {
-      "key": "keycloakUrl",
-      "value": "http://localhost:8180"
-    },
-    {
-      "key": "tokenCiudadano",
-      "value": ""
-    },
-    {
-      "key": "tokenAdmin",
-      "value": ""
-    },
-    {
-      "key": "fechaFutura",
-      "value": ""
-    },
-    {
-      "key": "reporteId",
-      "value": ""
-    },
-    {
-      "key": "avisoId",
-      "value": ""
-    }
-  ],
   "item": [
     {
       "name": "0. Salud de la API",
@@ -53,6 +23,7 @@
       ],
       "request": {
         "method": "GET",
+        "header": [],
         "url": "{{baseUrl}}/actuator/health"
       }
     },
@@ -101,6 +72,54 @@
                 {
                   "key": "password",
                   "value": "ciudadano123"
+                }
+              ]
+            },
+            "url": "{{keycloakUrl}}/realms/cuidagua/protocol/openid-connect/token"
+          }
+        },
+        {
+          "name": "Obtener token de personal1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Keycloak entrega el token (200)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.collectionVariables.set('tokenPersonal', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "cuidagua-app"
+                },
+                {
+                  "key": "username",
+                  "value": "personal1"
+                },
+                {
+                  "key": "password",
+                  "value": "personal123"
                 }
               ]
             },
@@ -158,7 +177,37 @@
       ]
     },
     {
-      "name": "2. Reportes",
+      "name": "2. Zonas",
+      "item": [
+        {
+          "name": "Listar zonas (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Devuelve el catálogo de zonas', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const zonas = pm.response.json().datos;",
+                  "  pm.expect(zonas.length).to.be.at.least(3);",
+                  "  pm.expect(zonas[0]).to.have.property('id');",
+                  "  pm.expect(zonas[0]).to.have.property('nombre');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/zonas"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Reportes",
       "item": [
         {
           "name": "Crear reporte válido (201)",
@@ -168,12 +217,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Responde 201 con el reporte en PENDIENTE', function () {",
+                  "pm.test('Responde 201 con folio, estado pendiente y evidencias', function () {",
                   "  pm.response.to.have.status(201);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  pm.expect(json.datos.estado).to.eql('PENDIENTE');",
-                  "  pm.expect(json.datos.usuario).to.eql('ciudadano1');",
+                  "  const d = pm.response.json().datos;",
+                  "  pm.expect(d.folio).to.match(/^CA-\\d{4}-\\d{6}$/);",
+                  "  pm.expect(d.estado).to.eql('pendiente');",
+                  "  pm.expect(d.categoria).to.eql('fuga');",
+                  "  pm.expect(d.zona.id).to.eql(2);",
+                  "  pm.expect(d.evidencias.length).to.eql(1);",
                   "});",
                   "pm.collectionVariables.set('reporteId', pm.response.json().datos.id);"
                 ]
@@ -194,7 +245,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"FUGA\",\n  \"descripcion\": \"Fuga de agua en la banqueta frente al número 25\",\n  \"direccion\": \"Av. Juárez 25\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"latitud\": 19.4326,\n  \"longitud\": -99.1332,\n  \"fotoUrl\": \"https://ejemplo.com/fotos/fuga1.jpg\"\n}"
+              "raw": "{\n  \"categoria\": \"fuga\",\n  \"descripcion\": \"Fuga de agua en la banqueta frente al número 25\",\n  \"zonaId\": 2,\n  \"latitud\": 20.1765,\n  \"longitud\": -98.0535,\n  \"evidencias\": [\n    \"https://ejemplo.com/fotos/fuga1.jpg\"\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/reportes"
           }
@@ -209,12 +260,11 @@
                 "exec": [
                   "pm.test('Responde 400 con errores por campo', function () {",
                   "  pm.response.to.have.status(400);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
-                  "  pm.expect(json.errores).to.have.property('tipo');",
-                  "  pm.expect(json.errores).to.have.property('descripcion');",
-                  "  pm.expect(json.errores).to.have.property('latitud');",
-                  "  pm.expect(pm.response.json().errores).to.have.property('zona');",
+                  "  const e = pm.response.json().errores;",
+                  "  pm.expect(e).to.have.property('categoria');",
+                  "  pm.expect(e).to.have.property('descripcion');",
+                  "  pm.expect(e).to.have.property('zonaId');",
+                  "  pm.expect(e).to.have.property('latitud');",
                   "});"
                 ]
               }
@@ -234,7 +284,42 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"descripcion\": \"Corta\",\n  \"direccion\": \"\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"latitud\": 120\n}"
+              "raw": "{\n  \"descripcion\": \"Corta\",\n  \"latitud\": 120,\n  \"longitud\": -200,\n  \"evidencias\": [\n    \"no-es-url\"\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/reportes"
+          }
+        },
+        {
+          "name": "Crear reporte con zona inexistente (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 400 en zonaId', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().errores).to.have.property('zonaId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCiudadano}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria\": \"fuga\",\n  \"descripcion\": \"Fuga de agua en la banqueta frente al número 25\",\n  \"zonaId\": 999,\n  \"latitud\": 20.1765,\n  \"longitud\": -98.0535,\n  \"evidencias\": [\n    \"https://ejemplo.com/fotos/fuga1.jpg\"\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/reportes"
           }
@@ -265,7 +350,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo\": \"SIN_AGUA\",\n  \"descripcion\": \"No hay agua desde ayer en toda la calle\",\n  \"direccion\": \"Calle 5 de Mayo 10\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\"\n}"
+              "raw": "{\n  \"categoria\": \"fuga\",\n  \"descripcion\": \"Fuga de agua en la banqueta frente al número 25\",\n  \"zonaId\": 2,\n  \"latitud\": 20.1765,\n  \"longitud\": -98.0535,\n  \"evidencias\": [\n    \"https://ejemplo.com/fotos/fuga1.jpg\"\n  ]\n}"
             },
             "url": "{{baseUrl}}/api/reportes"
           }
@@ -278,7 +363,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Responde 200 con una lista', function () {",
+                  "pm.test('Devuelve una lista', function () {",
                   "  pm.response.to.have.status(200);",
                   "  pm.expect(pm.response.json().datos).to.be.an('array');",
                   "});"
@@ -288,47 +373,12 @@
           ],
           "request": {
             "method": "GET",
+            "header": [],
             "url": "{{baseUrl}}/api/reportes"
           }
         },
         {
-          "name": "Listar reportes por colonia (200)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Todos los reportes son de la colonia Centro', function () {",
-                  "  pm.response.to.have.status(200);",
-                  "  pm.response.json().datos.forEach(r => pm.expect(r.colonia.toLowerCase()).to.eql('centro'));",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/api/reportes?colonia=Centro",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "reportes"
-              ],
-              "query": [
-                {
-                  "key": "colonia",
-                  "value": "Centro"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "Filtrar reportes por estado, tipo y zona (200)",
+          "name": "Filtrar reportes por estado, categoría y zona (200)",
           "event": [
             {
               "listen": "test",
@@ -337,9 +387,11 @@
                 "exec": [
                   "pm.test('Todos cumplen los filtros', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  json.datos.forEach(r => { pm.expect(r.estado).to.eql('PENDIENTE'); pm.expect(r.tipo).to.eql('FUGA'); pm.expect(r.zona.toLowerCase()).to.eql('zona centro'); });",
+                  "  pm.response.json().datos.forEach(function (r) {",
+                  "    pm.expect(r.estado).to.eql('pendiente');",
+                  "    pm.expect(r.categoria).to.eql('fuga');",
+                  "    pm.expect(r.zona.id).to.eql(2);",
+                  "  });",
                   "});"
                 ]
               }
@@ -348,7 +400,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/api/reportes?estado=PENDIENTE&tipo=FUGA&zona=Zona Centro"
+            "url": "{{baseUrl}}/api/reportes?estado=pendiente&categoria=fuga&zonaId=2"
           }
         },
         {
@@ -361,9 +413,7 @@
                 "exec": [
                   "pm.test('Indica los valores permitidos', function () {",
                   "  pm.response.to.have.status(400);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
-                  "  pm.expect(json.errores.estado).to.include('PENDIENTE');",
+                  "  pm.expect(pm.response.json().errores.estado).to.include('en_revision');",
                   "});"
                 ]
               }
@@ -372,7 +422,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/api/reportes?estado=CERRADO"
+            "url": "{{baseUrl}}/api/reportes?estado=cerrado"
           }
         },
         {
@@ -385,9 +435,7 @@
                 "exec": [
                   "pm.test('Devuelve el reporte creado', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  pm.expect(json.datos.id).to.eql(Number(pm.collectionVariables.get('reporteId')));",
+                  "  pm.expect(pm.response.json().datos.id).to.eql(Number(pm.collectionVariables.get('reporteId')));",
                   "});"
                 ]
               }
@@ -409,8 +457,6 @@
                 "exec": [
                   "pm.test('Responde 404', function () {",
                   "  pm.response.to.have.status(404);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
                   "});"
                 ]
               }
@@ -430,11 +476,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Solo reportes de ciudadano1', function () {",
+                  "pm.test('Incluye el reporte creado', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  json.datos.forEach(r => pm.expect(r.usuario).to.eql('ciudadano1'));",
+                  "  const id = Number(pm.collectionVariables.get('reporteId'));",
+                  "  pm.expect(pm.response.json().datos.map(function (r) { return r.id; })).to.include(id);",
                   "});"
                 ]
               }
@@ -459,10 +504,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Requiere rol ADMIN', function () {",
+                  "pm.test('Responde 403', function () {",
                   "  pm.response.to.have.status(403);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
                   "});"
                 ]
               }
@@ -482,25 +525,22 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"estado\": \"EN_PROCESO\"\n}"
+              "raw": "{\n  \"estado\": \"en_revision\"\n}"
             },
             "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
           }
         },
         {
-          "name": "Cambiar estado a EN_PROCESO como admin (200)",
+          "name": "Cambiar estado a en_revision como personal (200)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('El estado cambia y se registra quién lo hizo', function () {",
+                  "pm.test('El estado cambia a en_revision', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  pm.expect(json.datos.estado).to.eql('EN_PROCESO');",
-                  "  pm.expect(json.datos.actualizadoPor).to.eql('admin1');",
+                  "  pm.expect(pm.response.json().datos.estado).to.eql('en_revision');",
                   "});"
                 ]
               }
@@ -515,18 +555,18 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{tokenAdmin}}"
+                "value": "Bearer {{tokenPersonal}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"estado\": \"EN_PROCESO\",\n  \"comentario\": \"Cuadrilla asignada\"\n}"
+              "raw": "{\n  \"estado\": \"en_revision\",\n  \"observacion\": \"Cuadrilla asignada\"\n}"
             },
             "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
           }
         },
         {
-          "name": "Regresar a PENDIENTE (409)",
+          "name": "Regresar a pendiente (409)",
           "event": [
             {
               "listen": "test",
@@ -535,8 +575,7 @@
                 "exec": [
                   "pm.test('Transición no permitida', function () {",
                   "  pm.response.to.have.status(409);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
+                  "  pm.expect(pm.response.json().errores).to.have.property('estado');",
                   "});"
                 ]
               }
@@ -556,24 +595,22 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"estado\": \"PENDIENTE\"\n}"
+              "raw": "{\n  \"estado\": \"pendiente\"\n}"
             },
             "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
           }
         },
         {
-          "name": "Rechazar sin comentario (400)",
+          "name": "Rechazar sin observación (400)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('El comentario es obligatorio al rechazar', function () {",
+                  "pm.test('Pide la observación', function () {",
                   "  pm.response.to.have.status(400);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
-                  "  pm.expect(json.errores).to.have.property('comentario');",
+                  "  pm.expect(pm.response.json().errores).to.have.property('observacion');",
                   "});"
                 ]
               }
@@ -593,25 +630,28 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"estado\": \"RECHAZADO\"\n}"
+              "raw": "{\n  \"estado\": \"rechazado\"\n}"
             },
             "url": "{{baseUrl}}/api/reportes/{{reporteId}}/estado"
           }
         },
         {
-          "name": "Resumen para el panel (200)",
+          "name": "Historial de estados (200)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Incluye conteos por estado y tipo', function () {",
+                  "pm.test('Registro inicial y cambio a en_revision', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  pm.expect(json.datos.porEstado).to.have.all.keys('PENDIENTE', 'EN_PROCESO', 'RESUELTO', 'RECHAZADO');",
-                  "  pm.expect(json.datos.total).to.be.at.least(1);",
+                  "  const h = pm.response.json().datos;",
+                  "  pm.expect(h.length).to.eql(2);",
+                  "  pm.expect(h[0].estadoAnterior).to.eql(null);",
+                  "  pm.expect(h[0].estadoNuevo).to.eql('pendiente');",
+                  "  pm.expect(h[1].estadoAnterior).to.eql('pendiente');",
+                  "  pm.expect(h[1].estadoNuevo).to.eql('en_revision');",
+                  "  pm.expect(h[1].observacion).to.eql('Cuadrilla asignada');",
                   "});"
                 ]
               }
@@ -622,7 +662,36 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{tokenAdmin}}"
+                "value": "Bearer {{tokenCiudadano}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/reportes/{{reporteId}}/historial"
+          }
+        },
+        {
+          "name": "Resumen para el panel (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Incluye todos los estados y categorías', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const d = pm.response.json().datos;",
+                  "  pm.expect(d.porEstado).to.have.all.keys('pendiente', 'en_revision', 'resuelto', 'rechazado');",
+                  "  pm.expect(d.porCategoria).to.have.all.keys('fuga', 'tuberia_danada', 'falta_suministro', 'baja_presion', 'otro');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenPersonal}}"
               }
             ],
             "url": "{{baseUrl}}/api/reportes/resumen"
@@ -631,7 +700,7 @@
       ]
     },
     {
-      "name": "3. Avisos",
+      "name": "4. Avisos",
       "event": [
         {
           "listen": "prerequest",
@@ -656,9 +725,11 @@
                 "exec": [
                   "pm.test('Responde 201 y guarda quién lo creó', function () {",
                   "  pm.response.to.have.status(201);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  pm.expect(json.datos.creadoPor).to.eql('admin1');",
+                  "  const d = pm.response.json().datos;",
+                  "  pm.expect(d.tipo).to.eql('corte');",
+                  "  pm.expect(d.zona.id).to.eql(2);",
+                  "  pm.expect(d.vigente).to.eql(true);",
+                  "  pm.expect(d.creadoPor).to.be.a('string').and.not.empty;",
                   "});",
                   "pm.collectionVariables.set('avisoId', pm.response.json().datos.id);"
                 ]
@@ -679,22 +750,21 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"titulo\": \"Corte programado de agua\",\n  \"mensaje\": \"Se suspenderá el servicio por mantenimiento de la red principal.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"CORTE\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
+              "raw": "{\n  \"titulo\": \"Corte programado de agua\",\n  \"mensaje\": \"Se suspenderá el servicio por mantenimiento de la red principal.\",\n  \"zonaId\": 2,\n  \"tipo\": \"corte\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
             },
             "url": "{{baseUrl}}/api/avisos"
           }
         },
         {
-          "name": "Crear aviso como ciudadano (403)",
+          "name": "Crear aviso como personal (403)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Responde 403 porque no tiene rol ADMIN', function () {",
+                  "pm.test('Solo ADMIN publica avisos', function () {",
                   "  pm.response.to.have.status(403);",
-                  "  pm.expect(pm.response.json().exito).to.eql(false);",
                   "});"
                 ]
               }
@@ -709,12 +779,12 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{tokenCiudadano}}"
+                "value": "Bearer {{tokenPersonal}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"titulo\": \"Aviso no autorizado\",\n  \"mensaje\": \"Un ciudadano no debería poder publicar este aviso.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"CORTE\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
+              "raw": "{\n  \"titulo\": \"Corte programado de agua\",\n  \"mensaje\": \"Se suspenderá el servicio por mantenimiento de la red principal.\",\n  \"zonaId\": 2,\n  \"tipo\": \"corte\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
             },
             "url": "{{baseUrl}}/api/avisos"
           }
@@ -727,7 +797,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Responde 400 por fechaRestablecimiento en el pasado', function () {",
+                  "pm.test('Rechaza la fecha', function () {",
                   "  pm.response.to.have.status(400);",
                   "  pm.expect(pm.response.json().errores).to.have.property('fechaRestablecimiento');",
                   "});"
@@ -749,7 +819,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"titulo\": \"Restablecimiento atrasado\",\n  \"mensaje\": \"Este aviso tiene una fecha de restablecimiento en el pasado.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"RESTABLECIMIENTO\",\n  \"fechaRestablecimiento\": \"2020-01-01T08:00:00\"\n}"
+              "raw": "{\n  \"titulo\": \"Corte programado de agua\",\n  \"mensaje\": \"Se suspenderá el servicio por mantenimiento de la red principal.\",\n  \"zonaId\": 2,\n  \"tipo\": \"corte\",\n  \"fechaRestablecimiento\": \"2020-01-01T00:00:00\"\n}"
             },
             "url": "{{baseUrl}}/api/avisos"
           }
@@ -762,7 +832,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Responde 200 con una lista', function () {",
+                  "pm.test('Devuelve una lista', function () {",
                   "  pm.response.to.have.status(200);",
                   "  pm.expect(pm.response.json().datos).to.be.an('array');",
                   "});"
@@ -772,43 +842,8 @@
           ],
           "request": {
             "method": "GET",
+            "header": [],
             "url": "{{baseUrl}}/api/avisos"
-          }
-        },
-        {
-          "name": "Listar avisos por colonia (200)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Responde 200 con avisos de Centro', function () {",
-                  "  pm.response.to.have.status(200);",
-                  "  pm.response.json().datos.forEach(a => pm.expect(a.colonia.toLowerCase()).to.eql('centro'));",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/api/avisos?colonia=Centro",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "avisos"
-              ],
-              "query": [
-                {
-                  "key": "colonia",
-                  "value": "Centro"
-                }
-              ]
-            }
           }
         },
         {
@@ -819,11 +854,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Todos vigentes y del tipo pedido', function () {",
+                  "pm.test('Todos cumplen los filtros', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  json.datos.forEach(a => { pm.expect(a.vigente).to.eql(true); pm.expect(a.tipo).to.eql('CORTE'); });",
+                  "  pm.response.json().datos.forEach(function (a) {",
+                  "    pm.expect(a.vigente).to.eql(true);",
+                  "    pm.expect(a.zona.id).to.eql(2);",
+                  "    pm.expect(a.tipo).to.eql('corte');",
+                  "  });",
                   "});"
                 ]
               }
@@ -832,7 +869,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/api/avisos?vigentes=true&zona=Zona Centro&tipo=CORTE"
+            "url": "{{baseUrl}}/api/avisos?vigentes=true&zonaId=2&tipo=corte"
           }
         },
         {
@@ -843,10 +880,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Devuelve el aviso creado', function () {",
+                  "pm.test('Devuelve el aviso', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
                   "});"
                 ]
               }
@@ -866,12 +901,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Se actualiza el aviso', function () {",
+                  "pm.test('Actualiza tipo y zona', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
-                  "  pm.expect(json.datos.tipo).to.eql('MANTENIMIENTO');",
-                  "  pm.expect(json.datos.fechaActualizacion).to.not.be.null;",
+                  "  const d = pm.response.json().datos;",
+                  "  pm.expect(d.tipo).to.eql('mantenimiento');",
+                  "  pm.expect(d.zona.id).to.eql(1);",
+                  "  pm.expect(d.fechaActualizacion).to.not.eql(null);",
                   "});"
                 ]
               }
@@ -891,7 +926,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"titulo\": \"Corte programado de agua (horario ajustado)\",\n  \"mensaje\": \"El servicio se restablecerá más tarde por trabajos adicionales en la red.\",\n  \"colonia\": \"Centro\",\n  \"zona\": \"Zona Centro\",\n  \"tipo\": \"MANTENIMIENTO\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
+              "raw": "{\n  \"titulo\": \"Corte programado de agua\",\n  \"mensaje\": \"Se suspenderá el servicio por mantenimiento de la red principal.\",\n  \"zonaId\": 1,\n  \"tipo\": \"mantenimiento\",\n  \"fechaRestablecimiento\": \"{{fechaFutura}}\"\n}"
             },
             "url": "{{baseUrl}}/api/avisos/{{avisoId}}"
           }
@@ -904,10 +939,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Requiere rol ADMIN', function () {",
+                  "pm.test('Responde 403', function () {",
                   "  pm.response.to.have.status(403);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
                   "});"
                 ]
               }
@@ -932,10 +965,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Se elimina el aviso', function () {",
+                  "pm.test('Responde 200', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(true);",
                   "});"
                 ]
               }
@@ -960,10 +991,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Ya no existe', function () {",
+                  "pm.test('Responde 404', function () {",
                   "  pm.response.to.have.status(404);",
-                  "  const json = pm.response.json();",
-                  "  pm.expect(json.exito).to.eql(false);",
                   "});"
                 ]
               }
@@ -976,6 +1005,40 @@
           }
         }
       ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8180"
+    },
+    {
+      "key": "tokenCiudadano",
+      "value": ""
+    },
+    {
+      "key": "tokenPersonal",
+      "value": ""
+    },
+    {
+      "key": "tokenAdmin",
+      "value": ""
+    },
+    {
+      "key": "fechaFutura",
+      "value": ""
+    },
+    {
+      "key": "reporteId",
+      "value": ""
+    },
+    {
+      "key": "avisoId",
+      "value": ""
     }
   ]
 }

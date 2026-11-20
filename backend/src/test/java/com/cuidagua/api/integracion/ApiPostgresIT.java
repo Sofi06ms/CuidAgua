@@ -1,33 +1,37 @@
 package com.cuidagua.api.integracion;
 
-import com.cuidagua.api.aviso.repository.AvisoRepository;
-import com.cuidagua.api.config.KeycloakRealmRoleConverter;
-import com.cuidagua.api.reporte.entity.EstadoReporte;
-import com.cuidagua.api.reporte.entity.Reporte;
-import com.cuidagua.api.reporte.repository.ReporteRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDateTime;
+import java.time.Year;
 import java.util.List;
 import java.util.Map;
 
+import static com.cuidagua.api.TokensPrueba.token;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -38,14 +42,36 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Pruebas de integración API + PostgreSQL: recorren controlador, servicio, repositorio y base de datos reales
- * (con migraciones de Flyway). Solo se simula el token de Keycloak.
+ * con las migraciones V1 (esquema oficial) y V2 (ajustes). Solo se simula el token de Keycloak.
  * <p>
- * Requieren PostgreSQL en marcha. Se ejecutan con {@code mvn verify}.
+ * Requieren PostgreSQL en marcha. Se ejecutan con {@code mvn verify} y usan el esquema "pruebas",
+ * que se vacía y se vuelve a migrar al arrancar.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("it")
 class ApiPostgresIT {
+
+    /** Zonas del catálogo cargado en V1. */
+    private static final int ZONA_NORTE = 1;
+    private static final int ZONA_CENTRO = 2;
+    private static final int ZONA_SUR = 3;
+
+    private static final RequestPostProcessor CIUDADANO1 = token("ciudadano1", "CIUDADANO");
+    private static final RequestPostProcessor PERSONAL1 = token("personal1", "PERSONAL");
+    private static final RequestPostProcessor ADMIN1 = token("admin1", "ADMIN");
+
+    @TestConfiguration
+    static class EsquemaLimpio {
+        /** Vacía el esquema "pruebas" y aplica las migraciones actuales. */
+        @Bean
+        FlywayMigrationStrategy limpiarYMigrar() {
+            return flyway -> {
+                flyway.clean();
+                flyway.migrate();
+            };
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -54,82 +80,155 @@ class ApiPostgresIT {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private ReporteRepository reporteRepository;
-
-    @Autowired
-    private AvisoRepository avisoRepository;
+    private JdbcTemplate jdbc;
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void limpiarTablas() {
-        reporteRepository.deleteAll();
-        avisoRepository.deleteAll();
+        // Las zonas son catálogo de V1 y se conservan.
+        jdbc.execute("TRUNCATE historial_estados, asignaciones, evidencias, reportes, avisos, usuarios "
+                + "RESTART IDENTITY CASCADE");
+    }
+
+    // ---------------------------------------------------------------- Zonas
+
+    @Test
+    void zonasDelCatalogoDeV1() throws Exception {
+        mockMvc.perform(get("/api/zonas"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos[*].nombre", contains("Zona Norte", "Zona Centro", "Zona Sur")));
+    }
+
+    // ---------------------------------------------------------------- Usuarios
+
+    @Test
+    void elUsuarioDelTokenSeCreaUnaSolaVezSinContrasena() throws Exception {
+        crearReporte("fuga", ZONA_CENTRO);
+        crearReporte("fuga", ZONA_NORTE);
+
+        List<Map<String, Object>> usuarios = jdbc.queryForList("SELECT * FROM usuarios");
+        assertThat(usuarios).hasSize(1);
+        Map<String, Object> usuario = usuarios.get(0);
+        assertThat(usuario.get("keycloak_id")).isEqualTo("id-ciudadano1");
+        assertThat(usuario.get("nombre")).isEqualTo("Nombre ciudadano1");
+        assertThat(usuario.get("correo")).isEqualTo("ciudadano1@cuidagua.local");
+        assertThat(usuario.get("credencial_hash")).isEqualTo("KEYCLOAK");
+        assertThat(usuario.get("rol")).isEqualTo("ciudadano");
+        assertThat(usuario.get("fecha_registro")).isNotNull();
+    }
+
+    @Test
+    void usuarioExistenteSinKeycloakIdSeVinculaPorCorreoVerificado() throws Exception {
+        jdbc.update("INSERT INTO usuarios (nombre, correo, credencial_hash, rol) VALUES (?, ?, ?, ?)",
+                "Alta previa", "ciudadano1@cuidagua.local", "KEYCLOAK", "ciudadano");
+
+        crearReporte("fuga", ZONA_CENTRO);
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM usuarios", Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT keycloak_id FROM usuarios", String.class)).isEqualTo("id-ciudadano1");
+    }
+
+    @Test
+    void correoDeOtraCuentaDevuelve409() throws Exception {
+        jdbc.update("INSERT INTO usuarios (nombre, correo, credencial_hash, rol, keycloak_id) VALUES (?, ?, ?, ?, ?)",
+                "Otra cuenta", "ciudadano1@cuidagua.local", "KEYCLOAK", "ciudadano", "otro-sub");
+
+        mockMvc.perform(post("/api/reportes").contentType(MediaType.APPLICATION_JSON)
+                        .content(cuerpoReporte("fuga", ZONA_CENTRO)).with(CIUDADANO1))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errores.correo").exists());
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM reportes", Long.class)).isZero();
     }
 
     // ---------------------------------------------------------------- Reportes
 
     @Test
-    void registrarReporteLoGuardaEnPostgresConDatosDelToken() throws Exception {
-        long id = crearReporte("FUGA", "Zona Centro", "Centro");
+    void registrarReporteGuardaFolioEvidenciasEHistorialInicial() throws Exception {
+        MvcResult resultado = mockMvc.perform(post("/api/reportes").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "categoria": "tuberia_danada",
+                                  "descripcion": "  Tubería rota frente a la escuela  ",
+                                  "zonaId": %d,
+                                  "latitud": 20.17654321,
+                                  "longitud": -98.05351234,
+                                  "evidencias": ["https://ejemplo.com/foto1.jpg", "https://ejemplo.com/foto2.jpg"]
+                                }
+                                """.formatted(ZONA_SUR))
+                        .with(CIUDADANO1))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.datos.folio").value(matchesPattern("CA-" + Year.now() + "-\\d{6}")))
+                .andExpect(jsonPath("$.datos.estado").value("pendiente"))
+                .andExpect(jsonPath("$.datos.categoria").value("tuberia_danada"))
+                .andExpect(jsonPath("$.datos.descripcion").value("Tubería rota frente a la escuela"))
+                .andExpect(jsonPath("$.datos.zona.nombre").value("Zona Sur"))
+                .andExpect(jsonPath("$.datos.latitud").value(20.17654321))
+                .andExpect(jsonPath("$.datos.evidencias", hasSize(2)))
+                .andExpect(jsonPath("$.datos.evidencias[0].url").value("https://ejemplo.com/foto1.jpg"))
+                .andReturn();
+        int id = idDe(resultado);
 
-        Reporte guardado = reporteRepository.findById(id).orElseThrow();
-        assertThat(guardado.getEstado()).isEqualTo(EstadoReporte.PENDIENTE);
-        assertThat(guardado.getZona()).isEqualTo("Zona Centro");
-        assertThat(guardado.getUsuarioId()).isEqualTo("id-ciudadano1");
-        assertThat(guardado.getUsuarioNombre()).isEqualTo("ciudadano1");
-        assertThat(guardado.getFechaCreacion()).isNotNull();
+        Map<String, Object> fila = jdbc.queryForMap("SELECT * FROM reportes WHERE id = ?", id);
+        assertThat(fila.get("estado")).isEqualTo("pendiente");
+        assertThat(fila.get("categoria")).isEqualTo("tuberia_danada");
+        assertThat(fila.get("zona_id")).isEqualTo(ZONA_SUR);
+        assertThat(fila.get("fecha_creacion")).isNotNull();
+        assertThat(fila.get("fecha_actualizacion")).isNotNull();
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM evidencias WHERE reporte_id = ?", Long.class, id))
+                .isEqualTo(2);
+
+        Map<String, Object> historial = jdbc.queryForMap("SELECT * FROM historial_estados WHERE reporte_id = ?", id);
+        assertThat(historial.get("estado_anterior")).isNull();
+        assertThat(historial.get("estado_nuevo")).isEqualTo("pendiente");
     }
 
     @Test
-    void textosSeGuardanSinEspaciosSobrantes() throws Exception {
-        long id = crearReporte("FUGA", "  Zona Norte  ", "  Lomas ");
+    void losFoliosSonUnicosYConsecutivos() throws Exception {
+        String folio1 = folioDe(crearReporte("fuga", ZONA_CENTRO));
+        String folio2 = folioDe(crearReporte("fuga", ZONA_CENTRO));
 
-        Reporte guardado = reporteRepository.findById(id).orElseThrow();
-        assertThat(guardado.getZona()).isEqualTo("Zona Norte");
-        assertThat(guardado.getColonia()).isEqualTo("Lomas");
+        long n1 = Long.parseLong(folio1.substring(folio1.lastIndexOf('-') + 1));
+        long n2 = Long.parseLong(folio2.substring(folio2.lastIndexOf('-') + 1));
+        assertThat(n2).isEqualTo(n1 + 1);
     }
 
     @Test
-    void consultarReportesFiltraPorEstadoTipoYZona() throws Exception {
-        long fugaCentro = crearReporte("FUGA", "Zona Centro", "Centro");
-        long sinAguaCentro = crearReporte("SIN_AGUA", "Zona Centro", "Centro");
-        long fugaNorte = crearReporte("FUGA", "Zona Norte", "Lomas");
-        cambiarEstado(fugaNorte, "EN_PROCESO", null).andExpect(status().isOk());
+    void consultarReportesFiltraPorEstadoCategoriaYZona() throws Exception {
+        int fugaCentro = crearReporte("fuga", ZONA_CENTRO);
+        int sinAguaCentro = crearReporte("falta_suministro", ZONA_CENTRO);
+        int fugaNorte = crearReporte("fuga", ZONA_NORTE);
+        cambiarEstado(fugaNorte, "en_revision", null, PERSONAL1).andExpect(status().isOk());
 
         // Sin filtros: todos, más recientes primero
         mockMvc.perform(get("/api/reportes"))
-                .andExpect(jsonPath("$.datos[*].id", contains((int) fugaNorte, (int) sinAguaCentro, (int) fugaCentro)));
+                .andExpect(jsonPath("$.datos[*].id", contains(fugaNorte, sinAguaCentro, fugaCentro)));
 
-        // Zona sin distinguir mayúsculas
-        mockMvc.perform(get("/api/reportes").param("zona", "zona centro"))
-                .andExpect(jsonPath("$.datos", hasSize(2)));
+        mockMvc.perform(get("/api/reportes").param("zonaId", String.valueOf(ZONA_CENTRO)))
+                .andExpect(jsonPath("$.datos[*].id", contains(sinAguaCentro, fugaCentro)));
 
-        // Tipo
-        mockMvc.perform(get("/api/reportes").param("tipo", "FUGA"))
-                .andExpect(jsonPath("$.datos[*].id", contains((int) fugaNorte, (int) fugaCentro)));
+        mockMvc.perform(get("/api/reportes").param("categoria", "fuga"))
+                .andExpect(jsonPath("$.datos[*].id", contains(fugaNorte, fugaCentro)));
 
-        // Estado
-        mockMvc.perform(get("/api/reportes").param("estado", "EN_PROCESO"))
-                .andExpect(jsonPath("$.datos[*].id", contains((int) fugaNorte)));
+        mockMvc.perform(get("/api/reportes").param("estado", "en_revision"))
+                .andExpect(jsonPath("$.datos[*].id", contains(fugaNorte)));
 
-        // Combinados
-        mockMvc.perform(get("/api/reportes").param("tipo", "FUGA").param("zona", "Zona Centro").param("estado", "PENDIENTE"))
-                .andExpect(jsonPath("$.datos[*].id", contains((int) fugaCentro)));
-
-        // Colonia
-        mockMvc.perform(get("/api/reportes").param("colonia", "LOMAS"))
-                .andExpect(jsonPath("$.datos[*].id", contains((int) fugaNorte)));
+        mockMvc.perform(get("/api/reportes").param("categoria", "fuga")
+                        .param("zonaId", String.valueOf(ZONA_CENTRO)).param("estado", "pendiente"))
+                .andExpect(jsonPath("$.datos[*].id", contains(fugaCentro)));
     }
 
     @Test
     void obtenerReportePorIdYReporteInexistente() throws Exception {
-        long id = crearReporte("FUGA", "Zona Centro", "Centro");
+        int id = crearReporte("fuga", ZONA_CENTRO);
 
         mockMvc.perform(get("/api/reportes/{id}", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos.id").value(id));
+                .andExpect(jsonPath("$.datos.id").value(id))
+                .andExpect(jsonPath("$.datos.usuario").value("Nombre ciudadano1"));
 
         mockMvc.perform(get("/api/reportes/{id}", id + 1000))
                 .andExpect(status().isNotFound())
@@ -137,81 +236,120 @@ class ApiPostgresIT {
     }
 
     @Test
-    void flujoDeEstadosSeRespetaYQuedaRegistrado() throws Exception {
-        long id = crearReporte("TUBERIA_ROTA", "Zona Sur", "Jardines");
+    void cambiosDeEstadoSeGuardanEnElHistorial() throws Exception {
+        int id = crearReporte("tuberia_danada", ZONA_SUR);
 
-        cambiarEstado(id, "EN_PROCESO", "Cuadrilla asignada")
+        cambiarEstado(id, "en_revision", "Cuadrilla asignada", PERSONAL1)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos.estado").value("EN_PROCESO"))
-                .andExpect(jsonPath("$.datos.actualizadoPor").value("admin1"))
-                .andExpect(jsonPath("$.datos.comentarioEstado").value("Cuadrilla asignada"));
+                .andExpect(jsonPath("$.datos.estado").value("en_revision"));
 
-        // No se puede regresar a PENDIENTE
-        cambiarEstado(id, "PENDIENTE", null).andExpect(status().isConflict());
+        // No se puede regresar a pendiente
+        cambiarEstado(id, "pendiente", null, ADMIN1).andExpect(status().isConflict());
 
-        cambiarEstado(id, "RESUELTO", "Tubería reparada").andExpect(status().isOk());
+        cambiarEstado(id, "resuelto", "Tubería reparada", ADMIN1).andExpect(status().isOk());
 
-        // RESUELTO es final
-        cambiarEstado(id, "RECHAZADO", "Duplicado")
+        // resuelto es final
+        cambiarEstado(id, "rechazado", "Duplicado", ADMIN1)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errores.estado").exists());
 
-        Reporte guardado = reporteRepository.findById(id).orElseThrow();
-        assertThat(guardado.getEstado()).isEqualTo(EstadoReporte.RESUELTO);
-        assertThat(guardado.getFechaActualizacion()).isNotNull();
+        assertThat(jdbc.queryForObject("SELECT estado FROM reportes WHERE id = ?", String.class, id))
+                .isEqualTo("resuelto");
+
+        mockMvc.perform(get("/api/reportes/{id}/historial", id).with(CIUDADANO1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datos", hasSize(3)))
+                .andExpect(jsonPath("$.datos[*].estadoNuevo", contains("pendiente", "en_revision", "resuelto")))
+                .andExpect(jsonPath("$.datos[1].estadoAnterior").value("pendiente"))
+                .andExpect(jsonPath("$.datos[1].observacion").value("Cuadrilla asignada"))
+                .andExpect(jsonPath("$.datos[1].responsable").value("Nombre personal1"))
+                .andExpect(jsonPath("$.datos[2].responsable").value("Nombre admin1"));
+
+        // Los responsables quedaron registrados con su rol
+        assertThat(jdbc.queryForList("SELECT rol FROM usuarios ORDER BY id", String.class))
+                .containsExactly("ciudadano", "personal", "administrador");
     }
 
     @Test
-    void rechazarSinComentarioDevuelve400YNoCambiaElEstado() throws Exception {
-        long id = crearReporte("OTRO", "Zona Centro", "Centro");
+    void historialDeReporteInexistenteDevuelve404() throws Exception {
+        mockMvc.perform(get("/api/reportes/{id}/historial", 999).with(CIUDADANO1))
+                .andExpect(status().isNotFound());
+    }
 
-        cambiarEstado(id, "RECHAZADO", "   ")
+    @Test
+    void rechazarSinObservacionDevuelve400YNoCambiaElEstado() throws Exception {
+        int id = crearReporte("otro", ZONA_CENTRO);
+
+        cambiarEstado(id, "rechazado", "   ", ADMIN1)
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errores.comentario").exists());
+                .andExpect(jsonPath("$.errores.observacion").exists());
 
-        assertThat(reporteRepository.findById(id).orElseThrow().getEstado()).isEqualTo(EstadoReporte.PENDIENTE);
+        assertThat(jdbc.queryForObject("SELECT estado FROM reportes WHERE id = ?", String.class, id))
+                .isEqualTo("pendiente");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM historial_estados WHERE reporte_id = ?", Long.class, id))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void zonaInexistenteDevuelve400() throws Exception {
+        mockMvc.perform(post("/api/reportes").contentType(MediaType.APPLICATION_JSON)
+                        .content(cuerpoReporte("fuga", 999)).with(CIUDADANO1))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errores.zonaId").value("No existe una zona con id 999"));
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM reportes", Long.class)).isZero();
     }
 
     @Test
     void latitudSinLongitudDevuelve400() throws Exception {
-        String cuerpo = cuerpoReporte("FUGA", "Zona Centro", "Centro").replace("\"longitud\": -99.1332", "\"longitud\": null");
+        String cuerpo = cuerpoReporte("fuga", ZONA_CENTRO).replace("\"longitud\": -98.0535", "\"longitud\": null");
 
-        mockMvc.perform(post("/api/reportes").contentType(MediaType.APPLICATION_JSON).content(cuerpo)
-                        .with(token("ciudadano1", "CIUDADANO")))
+        mockMvc.perform(post("/api/reportes").contentType(MediaType.APPLICATION_JSON).content(cuerpo).with(CIUDADANO1))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errores.longitud").exists());
 
-        assertThat(reporteRepository.count()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM reportes", Long.class)).isZero();
     }
 
     @Test
     void misReportesSoloDevuelveLosDelUsuario() throws Exception {
-        crearReporte("FUGA", "Zona Centro", "Centro");
+        crearReporte("fuga", ZONA_CENTRO);
         mockMvc.perform(post("/api/reportes").contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpoReporte("SIN_AGUA", "Zona Norte", "Lomas"))
+                        .content(cuerpoReporte("falta_suministro", ZONA_NORTE))
                         .with(token("ciudadano2", "CIUDADANO")))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/reportes/mios").with(token("ciudadano2", "CIUDADANO")))
                 .andExpect(jsonPath("$.datos", hasSize(1)))
-                .andExpect(jsonPath("$.datos[0].usuario").value("ciudadano2"));
+                .andExpect(jsonPath("$.datos[0].usuario").value("Nombre ciudadano2"));
     }
 
     @Test
-    void resumenCuentaPorEstadoYTipo() throws Exception {
-        crearReporte("FUGA", "Zona Centro", "Centro");
-        crearReporte("FUGA", "Zona Centro", "Centro");
-        long otro = crearReporte("SIN_AGUA", "Zona Norte", "Lomas");
-        cambiarEstado(otro, "EN_PROCESO", null).andExpect(status().isOk());
+    void resumenCuentaPorEstadoYCategoria() throws Exception {
+        crearReporte("fuga", ZONA_CENTRO);
+        crearReporte("fuga", ZONA_CENTRO);
+        int otro = crearReporte("falta_suministro", ZONA_NORTE);
+        cambiarEstado(otro, "en_revision", null, ADMIN1).andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/reportes/resumen").with(token("admin1", "ADMIN")))
+        mockMvc.perform(get("/api/reportes/resumen").with(PERSONAL1))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datos.total").value(3))
-                .andExpect(jsonPath("$.datos.porEstado.PENDIENTE").value(2))
-                .andExpect(jsonPath("$.datos.porEstado.EN_PROCESO").value(1))
-                .andExpect(jsonPath("$.datos.porEstado.RESUELTO").value(0))
-                .andExpect(jsonPath("$.datos.porTipo.FUGA").value(2))
-                .andExpect(jsonPath("$.datos.porTipo.SIN_AGUA").value(1));
+                .andExpect(jsonPath("$.datos.porEstado.pendiente").value(2))
+                .andExpect(jsonPath("$.datos.porEstado.en_revision").value(1))
+                .andExpect(jsonPath("$.datos.porEstado.resuelto").value(0))
+                .andExpect(jsonPath("$.datos.porCategoria.fuga").value(2))
+                .andExpect(jsonPath("$.datos.porCategoria.falta_suministro").value(1))
+                .andExpect(jsonPath("$.datos.porCategoria.otro").value(0));
+    }
+
+    @Test
+    void laBaseDeDatosRechazaEstadosYCategoriasFueraDelCatalogo() throws Exception {
+        int id = crearReporte("fuga", ZONA_CENTRO);
+
+        assertThatThrownBy(() -> jdbc.update("UPDATE reportes SET estado = 'EN_PROCESO' WHERE id = ?", id))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update("UPDATE reportes SET categoria = 'inundacion' WHERE id = ?", id))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     // ---------------------------------------------------------------- Avisos
@@ -220,135 +358,142 @@ class ApiPostgresIT {
     void registrarConsultarEditarYEliminarAviso() throws Exception {
         LocalDateTime restablecimiento = LocalDateTime.now().plusDays(1).withNano(0);
         MvcResult creado = mockMvc.perform(post("/api/avisos").contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpoAviso("CORTE", "Zona Centro", restablecimiento))
-                        .with(token("admin1", "ADMIN")))
+                        .content(cuerpoAviso("corte", ZONA_CENTRO, restablecimiento))
+                        .with(ADMIN1))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.datos.vigente").value(true))
-                .andExpect(jsonPath("$.datos.creadoPor").value("admin1"))
+                .andExpect(jsonPath("$.datos.creadoPor").value("Nombre admin1"))
+                .andExpect(jsonPath("$.datos.fechaPublicacion").isNotEmpty())
                 .andReturn();
-        long id = idDe(creado);
-        assertThat(avisoRepository.findById(id)).isPresent();
+        int id = idDe(creado);
+
+        Map<String, Object> fila = jdbc.queryForMap(
+                "SELECT a.tipo, a.zona_id, u.keycloak_id FROM avisos a JOIN usuarios u ON u.id = a.creado_por_id "
+                        + "WHERE a.id = ?", id);
+        assertThat(fila).containsEntry("tipo", "corte").containsEntry("zona_id", ZONA_CENTRO)
+                .containsEntry("keycloak_id", "id-admin1");
 
         mockMvc.perform(get("/api/avisos/{id}", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos.zona").value("Zona Centro"));
+                .andExpect(jsonPath("$.datos.zona.nombre").value("Zona Centro"));
 
         mockMvc.perform(put("/api/avisos/{id}", id).contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpoAviso("MANTENIMIENTO", "Zona Norte", restablecimiento.plusDays(1)))
-                        .with(token("admin1", "ADMIN")))
+                        .content(cuerpoAviso("mantenimiento", ZONA_NORTE, restablecimiento.plusDays(1)))
+                        .with(ADMIN1))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datos.tipo").value("MANTENIMIENTO"))
-                .andExpect(jsonPath("$.datos.zona").value("Zona Norte"))
+                .andExpect(jsonPath("$.datos.tipo").value("mantenimiento"))
+                .andExpect(jsonPath("$.datos.zona.nombre").value("Zona Norte"))
                 .andExpect(jsonPath("$.datos.fechaActualizacion").isNotEmpty());
 
-        mockMvc.perform(delete("/api/avisos/{id}", id).with(token("admin1", "ADMIN")))
+        mockMvc.perform(delete("/api/avisos/{id}", id).with(ADMIN1))
                 .andExpect(status().isOk());
-        assertThat(avisoRepository.findById(id)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM avisos", Long.class)).isZero();
 
         mockMvc.perform(get("/api/avisos/{id}", id)).andExpect(status().isNotFound());
     }
 
     @Test
+    void avisoSinZonaEsGeneral() throws Exception {
+        String cuerpo = cuerpoAviso("corte", ZONA_CENTRO, LocalDateTime.now().plusDays(1).withNano(0))
+                .replace("\"zonaId\": " + ZONA_CENTRO + ",", "");
+
+        mockMvc.perform(post("/api/avisos").contentType(MediaType.APPLICATION_JSON).content(cuerpo).with(ADMIN1))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.datos.zona").doesNotExist());
+    }
+
+    @Test
     void consultarAvisosFiltraPorZonaTipoYVigencia() throws Exception {
-        long vigenteCentro = crearAviso("CORTE", "Zona Centro", LocalDateTime.now().plusDays(1));
-        long vigenteNorte = crearAviso("BAJA_PRESION", "Zona Norte", LocalDateTime.now().plusDays(2));
-        // Aviso vencido: se inserta directo porque la API exige fechas futuras.
-        var vencido = avisoRepository.findById(crearAviso("CORTE", "Zona Centro", LocalDateTime.now().plusDays(1)))
-                .orElseThrow();
-        vencido.setFechaRestablecimiento(LocalDateTime.now().minusHours(1));
-        avisoRepository.save(vencido);
+        int vigenteCentro = crearAviso("corte", ZONA_CENTRO, LocalDateTime.now().plusDays(1));
+        int vigenteNorte = crearAviso("baja_presion", ZONA_NORTE, LocalDateTime.now().plusDays(2));
+        // Aviso vencido: se ajusta directo en la BD porque la API exige fechas futuras.
+        int vencido = crearAviso("corte", ZONA_CENTRO, LocalDateTime.now().plusDays(1));
+        jdbc.update("UPDATE avisos SET fecha_restablecimiento = ? WHERE id = ?",
+                LocalDateTime.now().minusHours(1), vencido);
 
         mockMvc.perform(get("/api/avisos").param("vigentes", "true"))
-                .andExpect(jsonPath("$.datos[*].id", contains((int) vigenteNorte, (int) vigenteCentro)));
+                .andExpect(jsonPath("$.datos[*].id", contains(vigenteNorte, vigenteCentro)));
 
         mockMvc.perform(get("/api/avisos").param("vigentes", "false"))
-                .andExpect(jsonPath("$.datos[*].id", contains(vencido.getId().intValue())))
+                .andExpect(jsonPath("$.datos[*].id", contains(vencido)))
                 .andExpect(jsonPath("$.datos[0].vigente").value(false));
 
-        mockMvc.perform(get("/api/avisos").param("zona", "ZONA CENTRO").param("tipo", "CORTE"))
+        mockMvc.perform(get("/api/avisos").param("zonaId", String.valueOf(ZONA_CENTRO)).param("tipo", "corte"))
                 .andExpect(jsonPath("$.datos", hasSize(2)));
     }
 
     @Test
     void avisoConFechaInicioPosteriorAlRestablecimientoDevuelve400() throws Exception {
         LocalDateTime restablecimiento = LocalDateTime.now().plusDays(1).withNano(0);
-        String cuerpo = cuerpoAviso("CORTE", "Zona Centro", restablecimiento)
+        String cuerpo = cuerpoAviso("corte", ZONA_CENTRO, restablecimiento)
                 .replace("\"tipo\"", "\"fechaInicio\": \"" + restablecimiento.plusHours(2) + "\",\n  \"tipo\"");
 
-        mockMvc.perform(post("/api/avisos").contentType(MediaType.APPLICATION_JSON).content(cuerpo)
-                        .with(token("admin1", "ADMIN")))
+        mockMvc.perform(post("/api/avisos").contentType(MediaType.APPLICATION_JSON).content(cuerpo).with(ADMIN1))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errores.fechaInicio").exists());
 
-        assertThat(avisoRepository.count()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM avisos", Long.class)).isZero();
     }
 
     // ---------------------------------------------------------------- Utilidades
 
-    private long crearReporte(String tipo, String zona, String colonia) throws Exception {
+    private int crearReporte(String categoria, int zonaId) throws Exception {
         MvcResult resultado = mockMvc.perform(post("/api/reportes").contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpoReporte(tipo, zona, colonia))
-                        .with(token("ciudadano1", "CIUDADANO")))
+                        .content(cuerpoReporte(categoria, zonaId))
+                        .with(CIUDADANO1))
                 .andExpect(status().isCreated())
                 .andReturn();
         return idDe(resultado);
     }
 
-    private long crearAviso(String tipo, String zona, LocalDateTime restablecimiento) throws Exception {
+    private int crearAviso(String tipo, int zonaId, LocalDateTime restablecimiento) throws Exception {
         MvcResult resultado = mockMvc.perform(post("/api/avisos").contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpoAviso(tipo, zona, restablecimiento.withNano(0)))
-                        .with(token("admin1", "ADMIN")))
+                        .content(cuerpoAviso(tipo, zonaId, restablecimiento.withNano(0)))
+                        .with(ADMIN1))
                 .andExpect(status().isCreated())
                 .andReturn();
         return idDe(resultado);
     }
 
-    private org.springframework.test.web.servlet.ResultActions cambiarEstado(long id, String estado, String comentario)
+    private ResultActions cambiarEstado(int id, String estado, String observacion, RequestPostProcessor quien)
             throws Exception {
         String cuerpo = objectMapper.writeValueAsString(
-                comentario == null ? Map.of("estado", estado) : Map.of("estado", estado, "comentario", comentario));
+                observacion == null ? Map.of("estado", estado) : Map.of("estado", estado, "observacion", observacion));
         return mockMvc.perform(patch("/api/reportes/{id}/estado", id).contentType(MediaType.APPLICATION_JSON)
                 .content(cuerpo)
-                .with(token("admin1", "ADMIN")));
+                .with(quien));
     }
 
-    private static String cuerpoReporte(String tipo, String zona, String colonia) {
+    private String folioDe(int id) {
+        return jdbc.queryForObject("SELECT folio FROM reportes WHERE id = ?", String.class, id);
+    }
+
+    private static String cuerpoReporte(String categoria, int zonaId) {
         return """
                 {
-                  "tipo": "%s",
+                  "categoria": "%s",
                   "descripcion": "Incidencia de prueba con descripción suficiente",
-                  "direccion": "Calle Falsa 123",
-                  "colonia": "%s",
-                  "zona": "%s",
-                  "latitud": 19.4326,
-                  "longitud": -99.1332
+                  "zonaId": %d,
+                  "latitud": 20.1765,
+                  "longitud": -98.0535
                 }
-                """.formatted(tipo, colonia, zona);
+                """.formatted(categoria, zonaId);
     }
 
-    private static String cuerpoAviso(String tipo, String zona, LocalDateTime restablecimiento) {
+    private static String cuerpoAviso(String tipo, int zonaId, LocalDateTime restablecimiento) {
         return """
                 {
                   "titulo": "Aviso de prueba",
                   "mensaje": "Mensaje de prueba para la ciudadanía.",
-                  "colonia": "Centro",
-                  "zona": "%s",
+                  "zonaId": %d,
                   "tipo": "%s",
                   "fechaRestablecimiento": "%s"
                 }
-                """.formatted(zona, tipo, restablecimiento);
+                """.formatted(zonaId, tipo, restablecimiento);
     }
 
-    private long idDe(MvcResult resultado) throws Exception {
+    private int idDe(MvcResult resultado) throws Exception {
         JsonNode json = objectMapper.readTree(resultado.getResponse().getContentAsString());
-        return json.path("datos").path("id").asLong();
-    }
-
-    private static RequestPostProcessor token(String usuario, String... roles) {
-        return jwt()
-                .jwt(j -> j.subject("id-" + usuario)
-                        .claim("preferred_username", usuario)
-                        .claim("realm_access", Map.of("roles", List.of(roles))))
-                .authorities(new KeycloakRealmRoleConverter());
+        return json.path("datos").path("id").asInt();
     }
 }

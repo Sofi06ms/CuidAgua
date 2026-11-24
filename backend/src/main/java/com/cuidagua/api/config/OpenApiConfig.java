@@ -14,10 +14,12 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @OpenAPIDefinition(info = @Info(
         title = "CuidAgua API",
-        version = "0.1.0",
+        version = "0.2.0",
         description = """
                 Reportes ciudadanos de incidencias de agua y avisos de suministro.
-                Todas las respuestas usan el formato { exito, mensaje, datos, errores }."""))
+                Todas las respuestas usan el formato { exito, mensaje, datos, errores }.
+                Estados, categorías y tipos usan los valores en minúsculas de la base de datos                 (ej. "pendiente", "tuberia_danada", "corte").
+                Roles de Keycloak: CIUDADANO, PERSONAL y ADMIN."""))
 @SecurityScheme(
         name = OpenApiConfig.BEARER,
         type = SecuritySchemeType.HTTP,

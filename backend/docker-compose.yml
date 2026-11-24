@@ -1,0 +1,87 @@
+# Backend completo de CuidAgua con un solo comando (desde la carpeta backend):
+#
+#   docker compose up --build      # levanta PostgreSQL, Keycloak y la API
+#   docker compose down            # apaga todo (los datos de PostgreSQL se conservan)
+#   docker compose down -v         # apaga todo y BORRA los datos de PostgreSQL
+#
+#   API        -> http://localhost:8080   (Swagger: /swagger-ui.html)
+#   Keycloak   -> http://localhost:8180   (consola: admin / admin)
+#   PostgreSQL -> localhost:5432          (base cuidagua, usuario cuidagua, contraseña cuidagua)
+#
+# Para usar la app desde un celular en la misma red, copia .env.example a .env y pon la IP
+# de esta computadora en IP_LAN (ver README, sección "Para el equipo de Flutter").
+#
+# No se puede usar al mismo tiempo que el Dev Container (docker-compose.dev.yml) ni que el
+# docker-compose.yml de la raíz, porque usan los mismos puertos.
+
+name: cuidagua
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cuidagua
+      POSTGRES_USER: cuidagua
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cuidagua}
+      TZ: America/Mexico_City
+    # Sin scripts en /docker-entrypoint-initdb.d: las tablas las crea SOLO Flyway al arrancar la API.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cuidagua -d cuidagua"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    # Modo desarrollo en el puerto 8180. --import-realm carga keycloak/realm-cuidagua.json
+    # (roles, cliente cuidagua-app y usuarios de prueba) si el realm todavía no existe.
+    # Sin KC_HOSTNAME, Keycloak usa como issuer la dirección con la que se le habla
+    # (localhost, 10.0.2.2 o la IP de la red); la API acepta todas las de KEYCLOAK_ISSUERS.
+    command: start-dev --http-port=8180 --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "8180:8180"
+    healthcheck:
+      # La imagen no trae curl: se consulta /health/ready (puerto de administración 9000) con bash.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/cuidagua
+      DB_USER: cuidagua
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cuidagua}
+      # Llaves públicas de Keycloak por la red interna de Docker.
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8180/realms/cuidagua/protocol/openid-connect/certs
+      # Issuers aceptados: PC (localhost / 127.0.0.1), emulador de Android (10.0.2.2) y celular (IP_LAN).
+      KEYCLOAK_ISSUERS: >-
+        http://localhost:8180/realms/cuidagua,
+        http://127.0.0.1:8180/realms/cuidagua,
+        http://10.0.2.2:8180/realms/cuidagua,
+        http://${IP_LAN:-localhost}:8180/realms/cuidagua
+      TZ: America/Mexico_City
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+volumes:
+  pgdata:

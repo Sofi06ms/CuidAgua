@@ -7,7 +7,6 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /** Construye la consulta dinámica de reportes a partir de los filtros recibidos. */
 public final class ReporteSpecifications {
@@ -21,14 +20,11 @@ public final class ReporteSpecifications {
             if (filtro.estado() != null) {
                 condiciones.add(cb.equal(root.get("estado"), filtro.estado()));
             }
-            if (filtro.tipo() != null) {
-                condiciones.add(cb.equal(root.get("tipo"), filtro.tipo()));
+            if (filtro.categoria() != null) {
+                condiciones.add(cb.equal(root.get("categoria"), filtro.categoria()));
             }
-            if (filtro.zona() != null) {
-                condiciones.add(cb.equal(cb.lower(root.get("zona")), filtro.zona().toLowerCase(Locale.ROOT)));
-            }
-            if (filtro.colonia() != null) {
-                condiciones.add(cb.equal(cb.lower(root.get("colonia")), filtro.colonia().toLowerCase(Locale.ROOT)));
+            if (filtro.zonaId() != null) {
+                condiciones.add(cb.equal(root.get("zona").get("id"), filtro.zonaId()));
             }
             return cb.and(condiciones.toArray(Predicate[]::new));
         };

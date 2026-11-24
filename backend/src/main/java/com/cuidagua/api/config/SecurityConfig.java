@@ -25,6 +25,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private static final String ADMIN = "ADMIN";
+    private static final String PERSONAL = "PERSONAL";
 
     private final JsonSecurityHandlers jsonSecurityHandlers;
 
@@ -39,12 +40,19 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**", "/actuator/info", "/error").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
-                        // Reportes
-                        .requestMatchers(HttpMethod.GET, "/api/reportes/resumen").hasRole(ADMIN)
+                        // Zonas: catálogo público
+                        .requestMatchers(HttpMethod.GET, "/api/zonas").permitAll()
+
+                        // Usuarios: perfil del usuario del token
+                        .requestMatchers(HttpMethod.GET, "/api/usuarios/me").authenticated()
+
+                        // Reportes: el seguimiento (estado y resumen) lo hacen personal y administradores
+                        .requestMatchers(HttpMethod.GET, "/api/reportes/resumen").hasAnyRole(ADMIN, PERSONAL)
                         .requestMatchers(HttpMethod.GET, "/api/reportes/mios").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/reportes/*/historial").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/reportes", "/api/reportes/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/reportes").authenticated()
-                        .requestMatchers(HttpMethod.PATCH, "/api/reportes/*/estado").hasRole(ADMIN)
+                        .requestMatchers(HttpMethod.PATCH, "/api/reportes/*/estado").hasAnyRole(ADMIN, PERSONAL)
 
                         // Avisos: consulta pública, administración solo ADMIN
                         .requestMatchers(HttpMethod.GET, "/api/avisos", "/api/avisos/*").permitAll()

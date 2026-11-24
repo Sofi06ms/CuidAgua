@@ -2,12 +2,14 @@ package com.cuidagua.api.aviso.controller;
 
 import com.cuidagua.api.aviso.dto.AvisoFiltro;
 import com.cuidagua.api.aviso.dto.AvisoResponse;
-import com.cuidagua.api.common.exception.RecursoNoEncontradoException;
 import com.cuidagua.api.aviso.entity.TipoAviso;
 import com.cuidagua.api.aviso.service.AvisoService;
+import com.cuidagua.api.common.exception.RecursoNoEncontradoException;
 import com.cuidagua.api.config.JsonSecurityHandlers;
-import com.cuidagua.api.config.KeycloakRealmRoleConverter;
 import com.cuidagua.api.config.SecurityConfig;
+import com.cuidagua.api.usuario.dto.UsuarioToken;
+import com.cuidagua.api.usuario.entity.RolUsuario;
+import com.cuidagua.api.zona.dto.ZonaResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -20,14 +22,15 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
+import static com.cuidagua.api.TokensPrueba.token;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -54,9 +57,8 @@ class AvisoControllerTest {
             {
               "titulo": "Corte programado",
               "mensaje": "Se suspenderá el servicio por mantenimiento de la red.",
-              "colonia": "Centro",
-              "zona": "Zona Centro",
-              "tipo": "CORTE",
+              "zonaId": 1,
+              "tipo": "corte",
               "fechaRestablecimiento": "%s"
             }
             """.formatted(LocalDateTime.now().plusDays(2).withNano(0));
@@ -80,24 +82,31 @@ class AvisoControllerTest {
     }
 
     @Test
-    void crearAvisoComoCiudadanoDevuelve403() throws Exception {
+    void crearAvisoComoCiudadanoOPersonalDevuelve403() throws Exception {
         mockMvc.perform(postJson(AVISO_VALIDO).with(token("ciudadano1", "CIUDADANO")))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.exito").value(false))
                 .andExpect(jsonPath("$.errores.rol").exists());
+        mockMvc.perform(postJson(AVISO_VALIDO).with(token("personal1", "PERSONAL")))
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void crearAvisoComoAdminDevuelve201() throws Exception {
-        AvisoResponse respuesta = new AvisoResponse(1L, "Corte programado", "Mensaje", "Centro", "Zona Centro",
-                TipoAviso.CORTE, null, LocalDateTime.now().plusDays(2), true, "admin1", LocalDateTime.now(), null);
-        when(avisoService.crear(any(), eq("id-admin1"), eq("admin1"))).thenReturn(respuesta);
+        UsuarioToken admin = new UsuarioToken("id-admin1", "Nombre admin1", "admin1@cuidagua.local", true,
+                RolUsuario.ADMINISTRADOR);
+        AvisoResponse respuesta = new AvisoResponse(1, "Corte programado", "Mensaje", new ZonaResponse(1, "Zona Norte"),
+                TipoAviso.CORTE, null, LocalDateTime.now().plusDays(2), "Hasta el 22 nov 08:00", true, "Nombre admin1",
+                LocalDateTime.now(), null);
+        when(avisoService.crear(any(), eq(admin))).thenReturn(respuesta);
 
         mockMvc.perform(postJson(AVISO_VALIDO).with(token("admin1", "ADMIN", "CIUDADANO")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.exito").value(true))
                 .andExpect(jsonPath("$.datos.id").value(1))
-                .andExpect(jsonPath("$.datos.creadoPor").value("admin1"));
+                .andExpect(jsonPath("$.datos.tipo").value("corte"))
+                .andExpect(jsonPath("$.datos.zona.nombre").value("Zona Norte"))
+                .andExpect(jsonPath("$.datos.horario").value("Hasta el 22 nov 08:00"))
+                .andExpect(jsonPath("$.datos.creadoPor").value("Nombre admin1"));
     }
 
     @Test
@@ -106,8 +115,7 @@ class AvisoControllerTest {
                 {
                   "titulo": "Hoy",
                   "mensaje": "Corto",
-                  "colonia": "",
-                  "tipo": "CORTE",
+                  "zonaId": 0,
                   "fechaRestablecimiento": "2020-01-01T00:00:00"
                 }
                 """;
@@ -117,33 +125,35 @@ class AvisoControllerTest {
                 .andExpect(jsonPath("$.exito").value(false))
                 .andExpect(jsonPath("$.errores.titulo").exists())
                 .andExpect(jsonPath("$.errores.mensaje").exists())
-                .andExpect(jsonPath("$.errores.colonia").exists())
-                .andExpect(jsonPath("$.errores.zona").exists())
+                .andExpect(jsonPath("$.errores.zonaId").exists())
+                .andExpect(jsonPath("$.errores.tipo").exists())
                 .andExpect(jsonPath("$.errores.fechaRestablecimiento").exists());
     }
 
     @Test
     void tipoDeAvisoDesconocidoDevuelve400() throws Exception {
-        String invalido = AVISO_VALIDO.replace("\"CORTE\"", "\"INUNDACION\"");
+        String invalido = AVISO_VALIDO.replace("\"corte\"", "\"inundacion\"");
 
         mockMvc.perform(postJson(invalido).with(token("admin1", "ADMIN")))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errores.tipo").exists());
+                .andExpect(jsonPath("$.errores.tipo").value(containsString("corte, restablecimiento")));
     }
 
     @Test
     void listarAvisosConFiltrosDeZonaTipoYVigencia() throws Exception {
-        AvisoFiltro esperado = new AvisoFiltro("Zona Centro", null, TipoAviso.CORTE, true);
+        AvisoFiltro esperado = new AvisoFiltro(1, TipoAviso.BAJA_PRESION, true);
         when(avisoService.listar(esperado)).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/avisos").param("zona", "Zona Centro").param("tipo", "CORTE").param("vigentes", "true"))
+        mockMvc.perform(get("/api/avisos").param("zonaId", "1").param("tipo", "baja_presion").param("vigentes", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.exito").value(true));
+
+        verify(avisoService).listar(esperado);
     }
 
     @Test
     void obtenerAvisoInexistenteDevuelve404() throws Exception {
-        when(avisoService.obtener(5L)).thenThrow(new RecursoNoEncontradoException("No existe un aviso con id 5"));
+        when(avisoService.obtener(5)).thenThrow(new RecursoNoEncontradoException("No existe un aviso con id 5"));
 
         mockMvc.perform(get("/api/avisos/5"))
                 .andExpect(status().isNotFound())
@@ -155,7 +165,7 @@ class AvisoControllerTest {
         mockMvc.perform(put("/api/avisos/1").contentType(MediaType.APPLICATION_JSON).content(AVISO_VALIDO)
                         .with(token("ciudadano1", "CIUDADANO")))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(delete("/api/avisos/1").with(token("ciudadano1", "CIUDADANO")))
+        mockMvc.perform(delete("/api/avisos/1").with(token("personal1", "PERSONAL")))
                 .andExpect(status().isForbidden());
     }
 
@@ -169,14 +179,5 @@ class AvisoControllerTest {
 
     private MockHttpServletRequestBuilder postJson(String cuerpo) {
         return post("/api/avisos").contentType(MediaType.APPLICATION_JSON).content(cuerpo);
-    }
-
-    /** Simula un token de Keycloak con los roles en realm_access.roles. */
-    private static org.springframework.test.web.servlet.request.RequestPostProcessor token(String usuario, String... roles) {
-        return jwt()
-                .jwt(j -> j.subject("id-" + usuario)
-                        .claim("preferred_username", usuario)
-                        .claim("realm_access", Map.of("roles", List.of(roles))))
-                .authorities(new KeycloakRealmRoleConverter());
     }
 }

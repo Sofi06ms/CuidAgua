@@ -1,46 +1,43 @@
 package com.cuidagua.api.reporte.dto;
 
+import com.cuidagua.api.reporte.entity.CategoriaReporte;
 import com.cuidagua.api.reporte.entity.EstadoReporte;
 import com.cuidagua.api.reporte.entity.Reporte;
-import com.cuidagua.api.reporte.entity.TipoReporte;
+import com.cuidagua.api.zona.dto.ZonaResponse;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
-/** Datos de un reporte que devuelve la API. */
+/** Datos de un reporte que devuelve la API. {@code usuario} es el nombre de quien lo registró. */
 public record ReporteResponse(
-        Long id,
-        TipoReporte tipo,
+        Integer id,
+        String folio,
+        CategoriaReporte categoria,
         String descripcion,
-        String direccion,
-        String colonia,
-        String zona,
-        Double latitud,
-        Double longitud,
-        String fotoUrl,
+        ZonaResponse zona,
+        BigDecimal latitud,
+        BigDecimal longitud,
         EstadoReporte estado,
         String usuario,
+        List<EvidenciaResponse> evidencias,
         LocalDateTime fechaCreacion,
-        String comentarioEstado,
-        String actualizadoPor,
         LocalDateTime fechaActualizacion
 ) {
 
     public static ReporteResponse desde(Reporte reporte) {
         return new ReporteResponse(
                 reporte.getId(),
-                reporte.getTipo(),
+                reporte.getFolio(),
+                reporte.getCategoria(),
                 reporte.getDescripcion(),
-                reporte.getDireccion(),
-                reporte.getColonia(),
-                reporte.getZona(),
+                ZonaResponse.desde(reporte.getZona()),
                 reporte.getLatitud(),
                 reporte.getLongitud(),
-                reporte.getFotoUrl(),
                 reporte.getEstado(),
-                reporte.getUsuarioNombre(),
+                reporte.getUsuario().getNombre(),
+                reporte.getEvidencias().stream().map(EvidenciaResponse::desde).toList(),
                 reporte.getFechaCreacion(),
-                reporte.getComentarioEstado(),
-                reporte.getActualizadoPor(),
                 reporte.getFechaActualizacion());
     }
 }

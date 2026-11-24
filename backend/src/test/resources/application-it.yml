@@ -8,6 +8,9 @@ spring:
   flyway:
     schemas: pruebas
     default-schema: pruebas
+    # Solo en pruebas: permite que ApiPostgresIT vacíe el esquema "pruebas" antes de migrar,
+    # para que siempre parta de las migraciones actuales. Nunca activar en application.yml.
+    clean-disabled: false
   jpa:
     properties:
       hibernate:

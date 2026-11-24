@@ -1,12 +1,17 @@
 package com.cuidagua.api.aviso.entity;
 
+import com.cuidagua.api.aviso.converter.TipoAvisoConverter;
+import com.cuidagua.api.usuario.entity.Usuario;
+import com.cuidagua.api.zona.entity.Zona;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.Getter;
@@ -15,7 +20,10 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** Aviso de suministro publicado por un administrador (tabla "avisos"). */
+/**
+ * Aviso de suministro publicado por un administrador (tabla "avisos").
+ * tipo, fechaInicio, fechaRestablecimiento, creadoPor y fechaActualizacion se agregaron en V2.
+ */
 @Entity
 @Table(name = "avisos")
 @Getter
@@ -25,22 +33,23 @@ public class Aviso {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
-    @Column(nullable = false, length = 120)
+    /** null = aviso general para toda la ciudad. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "zona_id")
+    private Zona zona;
+
+    @Column(nullable = false, length = 150)
     private String titulo;
 
-    @Column(nullable = false, length = 1000)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String mensaje;
 
-    @Column(nullable = false, length = 120)
-    private String colonia;
+    @Column(name = "fecha_publicacion", updatable = false)
+    private LocalDateTime fechaPublicacion;
 
-    /** Zona o sector de la ciudad; se usa para filtrar. NULL solo en registros anteriores a V2. */
-    @Column(length = 80)
-    private String zona;
-
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = TipoAvisoConverter.class)
     @Column(nullable = false, length = 30)
     private TipoAviso tipo;
 
@@ -50,24 +59,17 @@ public class Aviso {
     @Column(name = "fecha_restablecimiento", nullable = false)
     private LocalDateTime fechaRestablecimiento;
 
-    /** Identificador en Keycloak (claim "sub") del administrador que creó el aviso. */
-    @Column(name = "creado_por_id", nullable = false, length = 64)
-    private String creadoPorId;
-
-    /** Nombre de usuario (claim "preferred_username") del administrador. */
-    @Column(name = "creado_por_nombre", nullable = false, length = 255)
-    private String creadoPorNombre;
-
-    @Column(name = "fecha_creacion", nullable = false, updatable = false)
-    private LocalDateTime fechaCreacion;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "creado_por_id", nullable = false, updatable = false)
+    private Usuario creadoPor;
 
     @Column(name = "fecha_actualizacion")
     private LocalDateTime fechaActualizacion;
 
     @PrePersist
     void alCrear() {
-        if (fechaCreacion == null) {
-            fechaCreacion = LocalDateTime.now();
+        if (fechaPublicacion == null) {
+            fechaPublicacion = LocalDateTime.now();
         }
     }
 

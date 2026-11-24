@@ -13,8 +13,12 @@
         "description": "Ciudadano que puede registrar reportes de incidencias"
       },
       {
+        "name": "PERSONAL",
+        "description": "Personal de atención que da seguimiento a los reportes (cambia su estado)"
+      },
+      {
         "name": "ADMIN",
-        "description": "Administrador que puede publicar avisos de suministro"
+        "description": "Administrador: da seguimiento a los reportes y publica avisos de suministro"
       }
     ]
   },
@@ -48,6 +52,18 @@
         { "type": "password", "value": "ciudadano123", "temporary": false }
       ],
       "realmRoles": ["CIUDADANO"]
+    },
+    {
+      "username": "personal1",
+      "enabled": true,
+      "email": "personal1@cuidagua.local",
+      "emailVerified": true,
+      "firstName": "Pedro",
+      "lastName": "Personal",
+      "credentials": [
+        { "type": "password", "value": "personal123", "temporary": false }
+      ],
+      "realmRoles": ["PERSONAL", "CIUDADANO"]
     },
     {
       "username": "admin1",

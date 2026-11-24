@@ -4,9 +4,13 @@ import com.cuidagua.api.aviso.entity.Aviso;
 import com.cuidagua.api.aviso.entity.TipoAviso;
 import com.cuidagua.api.zona.dto.ZonaResponse;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-/** Datos de un aviso que devuelve la API. {@code zona} es null en los avisos generales. */
+/**
+ * Datos de un aviso que devuelve la API. {@code zona} es null en los avisos generales.
+ * {@code horario} es un texto legible calculado de fechaInicio y fechaRestablecimiento (ver {@link HorarioAviso}).
+ */
 public record AvisoResponse(
         Integer id,
         String titulo,
@@ -15,6 +19,7 @@ public record AvisoResponse(
         TipoAviso tipo,
         LocalDateTime fechaInicio,
         LocalDateTime fechaRestablecimiento,
+        String horario,
         boolean vigente,
         String creadoPor,
         LocalDateTime fechaPublicacion,
@@ -30,6 +35,8 @@ public record AvisoResponse(
                 aviso.getTipo(),
                 aviso.getFechaInicio(),
                 aviso.getFechaRestablecimiento(),
+                HorarioAviso.describir(aviso.getFechaInicio(), aviso.getFechaRestablecimiento(),
+                        LocalDate.now().getYear()),
                 aviso.estaVigente(LocalDateTime.now()),
                 aviso.getCreadoPor().getNombre(),
                 aviso.getFechaPublicacion(),

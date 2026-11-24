@@ -1,0 +1,11 @@
+# Archivos que no se copian a la imagen de Docker (solo se necesitan pom.xml y src/).
+target/
+.vscode/
+.idea/
+*.iml
+.env
+pruebas/
+keycloak/
+README.md
+docker-compose*.yml
+Dockerfile

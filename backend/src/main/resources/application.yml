@@ -25,17 +25,19 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
-  # Validación de tokens JWT emitidos por Keycloak.
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/cuidagua}
-
   jackson:
     # Fechas en formato ISO-8601 (ej. 2026-11-20T08:00:00), cómodo para Flutter.
     serialization:
       write-dates-as-timestamps: false
+
+# Validación de tokens JWT emitidos por Keycloak (ver config/KeycloakJwtConfig.java).
+# - KEYCLOAK_ISSUER_URI: issuer principal (valor por defecto de las otras dos variables).
+# - KEYCLOAK_ISSUERS: issuers aceptados, separados por comas (localhost, 10.0.2.2, IP de la red...).
+# - KEYCLOAK_JWK_SET_URI: de dónde la API descarga las llaves públicas para verificar la firma.
+cuidagua:
+  keycloak:
+    issuers: ${KEYCLOAK_ISSUERS:${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/cuidagua}}
+    jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/cuidagua}/protocol/openid-connect/certs}
 
 management:
   endpoints:

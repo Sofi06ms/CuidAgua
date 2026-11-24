@@ -95,7 +95,8 @@ class AvisoControllerTest {
         UsuarioToken admin = new UsuarioToken("id-admin1", "Nombre admin1", "admin1@cuidagua.local", true,
                 RolUsuario.ADMINISTRADOR);
         AvisoResponse respuesta = new AvisoResponse(1, "Corte programado", "Mensaje", new ZonaResponse(1, "Zona Norte"),
-                TipoAviso.CORTE, null, LocalDateTime.now().plusDays(2), true, "Nombre admin1", LocalDateTime.now(), null);
+                TipoAviso.CORTE, null, LocalDateTime.now().plusDays(2), "Hasta el 22 nov 08:00", true, "Nombre admin1",
+                LocalDateTime.now(), null);
         when(avisoService.crear(any(), eq(admin))).thenReturn(respuesta);
 
         mockMvc.perform(postJson(AVISO_VALIDO).with(token("admin1", "ADMIN", "CIUDADANO")))
@@ -104,6 +105,7 @@ class AvisoControllerTest {
                 .andExpect(jsonPath("$.datos.id").value(1))
                 .andExpect(jsonPath("$.datos.tipo").value("corte"))
                 .andExpect(jsonPath("$.datos.zona.nombre").value("Zona Norte"))
+                .andExpect(jsonPath("$.datos.horario").value("Hasta el 22 nov 08:00"))
                 .andExpect(jsonPath("$.datos.creadoPor").value("Nombre admin1"));
     }
 

@@ -43,6 +43,9 @@ public class SecurityConfig {
                         // Zonas: catálogo público
                         .requestMatchers(HttpMethod.GET, "/api/zonas").permitAll()
 
+                        // Usuarios: perfil del usuario del token
+                        .requestMatchers(HttpMethod.GET, "/api/usuarios/me").authenticated()
+
                         // Reportes: el seguimiento (estado y resumen) lo hacen personal y administradores
                         .requestMatchers(HttpMethod.GET, "/api/reportes/resumen").hasAnyRole(ADMIN, PERSONAL)
                         .requestMatchers(HttpMethod.GET, "/api/reportes/mios").authenticated()

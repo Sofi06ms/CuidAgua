@@ -21,6 +21,9 @@ El código está organizado **por módulos funcionales**. Cada módulo de negoci
 ```
 backend/
 ├── pom.xml                         # Dependencias y build de Maven
+├── Dockerfile                      # Imagen de la API (compila con Maven + Java 21, ejecuta con JRE 21)
+├── docker-compose.yml              # Backend completo con un comando: db, keycloak y api
+├── .env.example                    # Variables opcionales para docker-compose.yml (IP_LAN)
 ├── docker-compose.dev.yml          # Contenedores de desarrollo: app, db, keycloak
 ├── keycloak/
 │   └── realm-cuidagua.json         # Realm, roles, cliente y usuarios de prueba
@@ -34,6 +37,7 @@ backend/
     │   │   │   ├── SecurityConfig.java        # Rutas públicas/protegidas por rol, JWT, CORS
     │   │   │   ├── OpenApiConfig.java         # Swagger / OpenAPI con autenticación Bearer
     │   │   │   ├── WebConfig.java             # Valores del catálogo en parámetros de URL
+    │   │   │   ├── KeycloakJwtConfig.java     # Valida el token: llaves (JWKS) e issuers permitidos
     │   │   │   ├── KeycloakRealmRoleConverter.java  # Lee realm_access.roles del token
     │   │   │   └── JsonSecurityHandlers.java  # Respuestas JSON para 401 y 403
     │   │   ├── common/                        # Código compartido por todos los módulos
@@ -43,9 +47,10 @@ backend/
     │   │   │   └── util/TextoUtils.java
     │   │   ├── usuario/                       # Tabla usuarios, vinculada con Keycloak
     │   │   │   ├── entity/                    # Usuario, RolUsuario
-    │   │   │   ├── dto/UsuarioToken.java      # Datos del usuario leídos del token
+    │   │   │   ├── dto/                       # UsuarioToken (datos del token), UsuarioResponse
     │   │   │   ├── repository/
-    │   │   │   └── service/UsuarioService.java  # Crea/actualiza el usuario a partir del token
+    │   │   │   ├── service/UsuarioService.java  # Crea/actualiza el usuario a partir del token
+    │   │   │   └── controller/                # UsuarioController (/api/usuarios/me)
     │   │   ├── zona/                          # Catálogo de zonas (/api/zonas)
     │   │   ├── reporte/                       # Módulo de reportes ciudadanos
     │   │   │   ├── entity/                    # Reporte, Evidencia, HistorialEstado, Asignacion,
@@ -59,7 +64,7 @@ backend/
     │   │   └── aviso/                         # Módulo de avisos de suministro
     │   │       ├── entity/                    # Aviso, TipoAviso
     │   │       ├── converter/
-    │   │       ├── dto/                       # AvisoRequest, AvisoResponse, AvisoFiltro
+    │   │       ├── dto/                       # AvisoRequest, AvisoResponse, AvisoFiltro, HorarioAviso
     │   │       ├── repository/
     │   │       ├── specification/
     │   │       ├── service/
@@ -72,8 +77,8 @@ backend/
     └── test/
         ├── java/com/cuidagua/api/
         │   ├── TokensPrueba.java              # Tokens de Keycloak simulados
-        │   ├── reporte/, aviso/, zona/        # Pruebas de controladores y seguridad (sin BD)
-        │   ├── usuario/, common/              # Pruebas unitarias (token, catálogos, flujo de estados)
+        │   ├── reporte/, aviso/, zona/, usuario/  # Pruebas de controladores y seguridad (sin BD)
+        │   ├── usuario/, aviso/, common/      # Pruebas unitarias (token, horario, catálogos, flujo de estados)
         │   └── integracion/ApiPostgresIT.java # Pruebas de integración API + PostgreSQL
         └── resources/application-it.yml       # Perfil "it": usa el esquema "pruebas"
 ```
@@ -91,6 +96,8 @@ backend/
 ---
 
 ## 2. Abrir el proyecto en GitHub Codespaces
+
+> **¿Solo quieres usar la API sin programar en Java?** Con Docker Desktop basta con `docker compose up --build` en la carpeta `backend` (no hace falta Java ni Maven). Ver la [sección 10](#10-para-el-equipo-de-flutter).
 
 1. En GitHub, entra al repositorio y cambia a la rama de trabajo.
 2. Botón **Code** → pestaña **Codespaces** → menú **⋯** → **New with options…**
@@ -159,6 +166,10 @@ Las pruebas de integración recorren controlador → servicio → repositorio �
 | `DB_USER`             | `cuidagua`                                    |
 | `DB_PASSWORD`         | `cuidagua`                                    |
 | `KEYCLOAK_ISSUER_URI` | `http://localhost:8180/realms/cuidagua` (valor por defecto) |
+| `KEYCLOAK_ISSUERS`    | Sin definir: usa `KEYCLOAK_ISSUER_URI`. Lista de issuers aceptados, separados por comas |
+| `KEYCLOAK_JWK_SET_URI`| Sin definir: `KEYCLOAK_ISSUER_URI` + `/protocol/openid-connect/certs` |
+
+Las dos últimas sirven para conectar la app desde un emulador o un celular; se explican en la [sección 9](#9-validación-del-token-desde-emulador-o-celular).
 
 ---
 
@@ -177,6 +188,22 @@ Estados, categorías y tipos usan **los mismos valores en minúsculas que la bas
 | Método | Ruta         | Acceso  | Descripción |
 |--------|--------------|---------|-------------|
 | GET    | `/api/zonas` | Público | Lista las zonas (`id`, `nombre`). El `id` se usa como `zonaId` al crear y filtrar. |
+
+### Usuarios (`/api/usuarios`)
+
+| Método | Ruta               | Acceso                    | Descripción |
+|--------|--------------------|---------------------------|-------------|
+| GET    | `/api/usuarios/me` | Token (cualquier usuario) | Datos del usuario del token: `id`, `nombre`, `correo` y `rol` (`ciudadano`, `personal` o `administrador`). Si es su primera petición, crea su fila en `usuarios`. |
+
+```json
+{
+  "exito": true,
+  "mensaje": "Usuario autenticado",
+  "datos": { "id": 1, "nombre": "Carla Ciudadana", "correo": "ciudadano1@cuidagua.local", "rol": "ciudadano" }
+}
+```
+
+Sin token responde **401**. La app lo puede llamar justo después de iniciar sesión para decidir qué pantallas mostrar según el `rol`.
 
 ### Reportes (`/api/reportes`)
 
@@ -311,6 +338,16 @@ pendiente ──► en_revision ──► resuelto
 
 Las fechas usan el formato `yyyy-MM-ddTHH:mm:ss` (ej. `2026-11-20T08:00:00`), en hora del centro de México (`TZ=America/Mexico_City`).
 
+### Campo `horario` en las respuestas de avisos
+
+Cada aviso incluye `horario`, un texto en español listo para mostrar en la app. Se calcula con `fechaInicio` y `fechaRestablecimiento` cada vez que se responde, así que no se guarda en la base de datos ni se envía al crear o editar un aviso.
+
+| `fechaInicio` | `fechaRestablecimiento` | `horario` |
+|---------------|-------------------------|-----------|
+| `2026-11-25T08:00:00` | `2026-11-25T18:00:00` | `Del 25 nov 08:00 al 25 nov 18:00` |
+| `null` | `2026-11-25T18:00:00` | `Hasta el 25 nov 18:00` |
+| `2026-12-30T08:00:00` | `2027-01-02T18:30:00` | `Del 30 dic 08:00 al 2 ene 2027 18:30` (el año solo aparece si no es el actual) |
+
 ---
 
 ## 5. Formato de respuestas
@@ -369,6 +406,7 @@ Todas las respuestas tienen la misma forma, para que Flutter las procese igual:
     "tipo": "corte",
     "fechaInicio": null,
     "fechaRestablecimiento": "2026-11-22T08:00:00",
+    "horario": "Hasta el 22 nov 08:00",
     "vigente": true,
     "creadoPor": "Andrés Administrador",
     "fechaPublicacion": "2026-11-20T10:20:00.654321",
@@ -557,11 +595,174 @@ En Codespaces, lo equivalente es **Rebuild Container** desde la paleta de comand
 
 ## 8. Notas para el equipo
 
-- **Issuer del token:** la API acepta tokens cuyo `iss` sea `http://localhost:8180/realms/cuidagua`. Cuando la app Flutter se conecte desde un emulador o dispositivo usando la URL pública del Codespace, el `iss` cambiará. En ese caso hay que configurar `KC_HOSTNAME` en Keycloak y ajustar `KEYCLOAK_ISSUER_URI`.
-- **docker-compose.yml de la raíz:** sigue usando `postgres:17` y `cuidagua_db`. El entorno de desarrollo del backend (`docker-compose.dev.yml`) usa PostgreSQL 16 con la base `cuidagua`. Conviene unificarlos cuando se cierren las decisiones pendientes de `docs/DECISIONES_TECNICAS.md`.
+- **Issuer del token:** la API acepta los issuers de `KEYCLOAK_ISSUERS` (ver [sección 9](#9-validación-del-token-desde-emulador-o-celular)). Si la app se conecta por la URL pública de un Codespace, agrega esa URL a la lista.
+- **docker-compose.yml de la raíz:** sigue usando `postgres:17` y `cuidagua_db`, y en `develop` monta `database/cuidagua_db.sql` para crear las tablas. El backend (`docker-compose.yml` y `docker-compose.dev.yml` de esta carpeta) usa PostgreSQL 16 con la base `cuidagua` y **las tablas las crea solo Flyway**. Si la API apunta a una base ya creada con el script, Flyway falla porque el esquema no está vacío. Conviene unificarlos cuando se cierren las decisiones pendientes de `docs/DECISIONES_TECNICAS.md`.
 - **Cambios para la app Flutter (respecto a la versión anterior de la API):**
   - Los ids son enteros (`SERIAL`) y los valores de catálogo van en minúsculas (`pendiente`, `fuga`, `corte`…). El estado `EN_PROCESO` pasa a ser `en_revision`.
   - Reportes: `tipo` → `categoria` (`TUBERIA_ROTA` → `tuberia_danada`, `SIN_AGUA` → `falta_suministro`); `zona` (texto) → `zonaId` (y en la respuesta, `zona: {id, nombre}`); se eliminan `direccion` y `colonia`; `fotoUrl` → `evidencias` (lista); nuevo campo `folio`. `comentario` → `observacion` en el cambio de estado; `comentarioEstado` y `actualizadoPor` se sustituyen por `GET /api/reportes/{id}/historial`. En el resumen, `porTipo` → `porCategoria`.
   - Avisos: `zona` → `zonaId` (opcional); se elimina `colonia`; `fechaCreacion` → `fechaPublicacion`; el título admite hasta 150 caracteres.
 - **Tabla `asignaciones`:** está mapeada (`Asignacion`) pero todavía no tiene endpoints.
 - **Swagger en producción:** desactívalo con `springdoc.api-docs.enabled=false` y `springdoc.swagger-ui.enabled=false`.
+
+---
+
+## 9. Validación del token desde emulador o celular
+
+Keycloak escribe en el token (claim `iss`, *issuer*) **la dirección con la que se le pidió el token**. Esa dirección cambia según dónde corre la app:
+
+| Dónde corre la app | Keycloak se llama en | `iss` del token |
+|--------------------|----------------------|-----------------|
+| Navegador, curl o Postman en la PC | `http://localhost:8180` | `http://localhost:8180/realms/cuidagua` |
+| Emulador de Android | `http://10.0.2.2:8180` (`10.0.2.2` es la PC vista desde el emulador) | `http://10.0.2.2:8180/realms/cuidagua` |
+| Celular en la misma red Wi-Fi | `http://<IP de la PC>:8180` | `http://192.168.1.50:8180/realms/cuidagua` (ejemplo) |
+
+Por eso la API no usa un solo issuer fijo. `config/KeycloakJwtConfig.java` valida cada token así:
+
+1. **Firma:** descarga las llaves públicas de Keycloak desde `KEYCLOAK_JWK_SET_URI`. Dentro de Docker usa la red interna (`http://keycloak:8180/...`), que no depende de cómo se conecte la app.
+2. **Issuer:** el `iss` del token debe ser uno de los de `KEYCLOAK_ISSUERS` (separados por comas). Si no está, la respuesta es **401**.
+3. **Expiración:** el token no debe haber vencido. Dura 30 minutos (`accessTokenLifespan` del realm).
+
+| Variable | Para qué sirve | En `docker-compose.yml` |
+|----------|----------------|-------------------------|
+| `KEYCLOAK_ISSUERS` | Issuers aceptados | `localhost`, `127.0.0.1`, `10.0.2.2` e `IP_LAN` (puerto 8180) |
+| `KEYCLOAK_JWK_SET_URI` | Dirección de las llaves públicas | `http://keycloak:8180/realms/cuidagua/protocol/openid-connect/certs` |
+| `KEYCLOAK_ISSUER_URI` | Valor por defecto de las dos anteriores (compatibilidad con el Dev Container) | — |
+| `IP_LAN` | IP de la PC en la red local; se agrega a `KEYCLOAK_ISSUERS` | Se lee de `backend/.env` |
+
+Al arrancar, la API escribe en el log qué issuers acepta:
+
+```
+Tokens aceptados de los issuers [http://localhost:8180/realms/cuidagua, ..., http://192.168.1.50:8180/realms/cuidagua] (llaves en http://keycloak:8180/...)
+```
+
+**Del lado de Keycloak** no hace falta configurar nada: sin `KC_HOSTNAME`, en modo desarrollo usa como issuer la dirección de cada petición. El realm tiene `sslRequired: none`, así que acepta HTTP desde la red local (solo para desarrollo).
+
+**Alternativa con issuer fijo:** si prefieres que todos los tokens tengan el mismo `iss`, define `KC_HOSTNAME=http://<IP de la PC>:8180` en el servicio `keycloak` y deja `KEYCLOAK_ISSUERS` con solo esa dirección. Si la IP de la PC cambia (otra red Wi-Fi), hay que actualizarla.
+
+---
+
+## 10. Para el equipo de Flutter
+
+### Levantar el backend con un solo comando
+
+Solo necesitas **Docker Desktop** (no hace falta Java, Maven ni PostgreSQL instalados).
+
+```bash
+cd backend
+docker compose up --build
+```
+
+La primera vez tarda unos minutos (descarga las imágenes y compila la API). Está lista cuando el log muestra `Started CuidaguaApiApplication`. Compruébalo:
+
+```bash
+curl http://localhost:8080/actuator/health     # {"status":"UP"}
+```
+
+| Servicio   | Dirección en la PC | Notas |
+|------------|--------------------|-------|
+| API        | `http://localhost:8080/api` | Swagger: `http://localhost:8080/swagger-ui.html` |
+| Keycloak   | `http://localhost:8180` | Consola de administración: `admin` / `admin` |
+| PostgreSQL | `localhost:5432` | Base `cuidagua`, usuario `cuidagua`, contraseña `cuidagua` |
+
+Para apagar todo: `Ctrl+C` y luego `docker compose down`. Los datos de PostgreSQL se conservan; `docker compose down -v` los borra. Las tablas las crea Flyway al arrancar la API, y las tres zonas (Zona Norte, Zona Centro, Zona Sur) ya vienen cargadas.
+
+> No lo levantes al mismo tiempo que el Dev Container del backend ni que el `docker-compose.yml` de la raíz: usan los mismos puertos (5432, 8080 y 8180).
+
+### Usuarios de prueba
+
+| Usuario      | Contraseña     | Rol en `GET /api/usuarios/me` | Qué puede hacer |
+|--------------|----------------|-------------------------------|-----------------|
+| `ciudadano1` | `ciudadano123` | `ciudadano`     | Crear reportes, ver los suyos |
+| `personal1`  | `personal123`  | `personal`      | Lo anterior + cambiar el estado de los reportes y ver el resumen |
+| `admin1`     | `admin123`     | `administrador` | Lo anterior + publicar, editar y eliminar avisos |
+
+También se puede iniciar sesión con el correo (`ciudadano1@cuidagua.local`, etc.) en lugar del usuario.
+
+### URL base según dónde corre la app
+
+| Dónde corre la app | API (`baseUrl`) | Keycloak |
+|--------------------|-----------------|----------|
+| Flutter web / escritorio en la misma PC | `http://localhost:8080/api` | `http://localhost:8180` |
+| Emulador de Android | `http://10.0.2.2:8080/api` | `http://10.0.2.2:8180` |
+| Celular físico en la misma red Wi-Fi | `http://<IP de la PC>:8080/api` | `http://<IP de la PC>:8180` |
+
+**Para el celular**, la PC que corre Docker debe hacer lo siguiente:
+
+1. Buscar su IP: en Windows, `ipconfig` → "Dirección IPv4" del adaptador Wi-Fi (ej. `192.168.1.50`).
+2. Copiar `backend/.env.example` como `backend/.env` y escribir `IP_LAN=192.168.1.50`.
+3. Aplicar el cambio: `docker compose up -d` (recrea la API con la nueva lista de issuers).
+4. Si el celular no conecta, permitir los puertos 8080 y 8180 en el Firewall de Windows (aparece un aviso la primera vez) y comprobar que la red Wi-Fi no aísle a los dispositivos (las redes de invitados suelen hacerlo).
+5. Probar desde el navegador del celular: `http://192.168.1.50:8080/api/zonas`.
+
+> **Android y HTTP:** desde Android 9, las apps bloquean `http://` por defecto. Para desarrollo agrega `android:usesCleartextTraffic="true"` en la etiqueta `<application>` de `android/app/src/main/AndroidManifest.xml`.
+
+### Iniciar sesión: pedir el token a Keycloak
+
+La API **no tiene** un endpoint de login: la app pide el token directamente a Keycloak con el usuario y la contraseña, y después lo manda en cada petición protegida.
+
+```http
+POST {keycloak}/realms/cuidagua/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id=cuidagua-app&username=ciudadano1&password=ciudadano123
+```
+
+Respuesta (resumida):
+
+```json
+{ "access_token": "eyJhbGciOi...", "expires_in": 1800, "refresh_token": "eyJhbGciOi...", "token_type": "Bearer" }
+```
+
+Ejemplo con el paquete `http` (ya está en `pubspec.yaml`):
+
+```dart
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+// Emulador de Android. En la PC usa localhost; en un celular, la IP de la PC.
+const keycloakUrl = 'http://10.0.2.2:8180';
+const apiUrl = 'http://10.0.2.2:8080/api';
+
+/// Pide el token a Keycloak. Devuelve null si el usuario o la contraseña son incorrectos.
+Future<String?> iniciarSesion(String usuario, String contrasena) async {
+  final respuesta = await http.post(
+    Uri.parse('$keycloakUrl/realms/cuidagua/protocol/openid-connect/token'),
+    // Un Map en body se envía como application/x-www-form-urlencoded.
+    body: {
+      'grant_type': 'password',
+      'client_id': 'cuidagua-app',
+      'username': usuario,
+      'password': contrasena,
+    },
+  );
+  if (respuesta.statusCode != 200) return null; // 401: credenciales inválidas
+  return jsonDecode(respuesta.body)['access_token'] as String;
+}
+
+/// Datos del usuario que inició sesión: {id, nombre, correo, rol}.
+Future<Map<String, dynamic>> miPerfil(String token) async {
+  final respuesta = await http.get(
+    Uri.parse('$apiUrl/usuarios/me'),
+    headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+  );
+  final cuerpo = jsonDecode(respuesta.body) as Map<String, dynamic>;
+  if (cuerpo['exito'] != true) throw Exception(cuerpo['mensaje']);
+  return cuerpo['datos'] as Map<String, dynamic>; // rol: ciudadano | personal | administrador
+}
+```
+
+Flujo recomendado:
+
+1. Pantalla de login → `iniciarSesion(usuario, contrasena)`. Ya no hace falta que la persona elija su rol.
+2. Con el token → `GET /api/usuarios/me`. Según `rol`, mostrar las pantallas de ciudadano o de administrador (`personal` también puede gestionar reportes).
+3. En cada petición protegida, enviar `Authorization: Bearer <token>`.
+4. El token dura **30 minutos**. Si la API responde **401**, volver a pedir el token (o renovarlo con `grant_type=refresh_token` y el `refresh_token`).
+
+### Lo que hay que saber de las respuestas
+
+- Todas tienen la forma `{ "exito", "mensaje", "datos" }`. Las listas vienen en `datos`, no en la raíz: `jsonDecode(body)['datos'] as List`.
+- Una lista vacía responde **200** con `"datos": []`, no 404.
+- Los catálogos van en minúsculas con guion bajo (`en_revision`, `falta_suministro`, `baja_presion`). La tabla de valores está en la [sección 4](#4-endpoints).
+- Las zonas salen de `GET /api/zonas`. Usa su `id` como `zonaId` al crear reportes y avisos.
+- Los avisos traen `horario` listo para mostrar (ej. `"Del 25 nov 08:00 al 25 nov 18:00"`).
+- Códigos que conviene manejar: 400 (datos inválidos, con `errores` por campo), 401 (falta el token o venció), 403 (sin permiso), 404 (no existe) y 409 (cambio de estado no permitido).

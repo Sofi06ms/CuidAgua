@@ -7,70 +7,90 @@ import 'package:http/http.dart' as http;
 import '../models/models.dart';
 
 class ApiService {
-  // Configuración de la dirección del servidor.
   final String baseUrl;
-
-  // Activar o desactivar datos simulados.
+  final String keycloakUrl;
   final bool useMockData;
-
-  // Cliente HTTP.
   final http.Client _client;
 
   ApiService({
     String? baseUrl,
-    this.useMockData = true,
+    String? keycloakUrl,
+    this.useMockData = false,
     http.Client? client,
   })  : baseUrl = baseUrl ??
             (kIsWeb
-                ? 'http://localhost:3000/api'
-                : 'http://10.0.2.2:3000/api'),
+                ? 'http://localhost:8080/api'
+                : 'http://10.0.2.2:8080/api'),
+        keycloakUrl = keycloakUrl ??
+            (kIsWeb
+                ? 'http://localhost:8180'
+                : 'http://10.0.2.2:8180'),
         _client = client ?? http.Client();
 
-  // 1. ENVIAR REPORTE CIUDADANO (POST)
+  // Pide un token a Keycloak con el usuario de prueba (credenciales escolares)
+  Future<String> _obtenerToken() async {
+    final response = await _client.post(
+      Uri.parse('$keycloakUrl/realms/cuidagua/protocol/openid-connect/token'),
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: {
+        'client_id': 'cuidagua-app',
+        'username': 'ciudadano1',
+        'password': 'ciudadano123',
+        'grant_type': 'password',
+      },
+    ).timeout(const Duration(seconds: 10));
+
+    if (response.statusCode != 200) {
+      throw Exception('Keycloak ${response.statusCode}: ${response.body}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['access_token'] as String;
+  }
+
+  // 1. ENVIAR REPORTE (POST con token Bearer). Lanza excepción con el detalle si falla.
   Future<bool> enviarReporte(
     String descripcion,
-    String ubicacion,
-  ) async {
+    String categoria,
+    int zonaId, {
+    double? latitud,
+    double? longitud,
+  }) async {
     if (useMockData) {
       await Future.delayed(const Duration(seconds: 1));
       return true;
     }
 
     try {
+      final token = await _obtenerToken();
+
+      final Map<String, dynamic> cuerpo = {
+        'descripcion': descripcion,
+        'categoria': categoria,
+        'zonaId': zonaId,
+      };
+      if (latitud != null && longitud != null) {
+        cuerpo['latitud'] = latitud;
+        cuerpo['longitud'] = longitud;
+      }
+
       final response = await _client
           .post(
             Uri.parse('$baseUrl/reportes'),
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
             },
-            body: jsonEncode({
-              'descripcion': descripcion,
-              'ubicacion': ubicacion,
-            }),
+            body: jsonEncode(cuerpo),
           )
           .timeout(const Duration(seconds: 10));
 
       if ([200, 201, 202, 204].contains(response.statusCode)) {
         return true;
       }
-
-      // Manejo de códigos de error para POST
-      switch (response.statusCode) {
-        case 400:
-          throw Exception('Error 400: Los datos enviados son incorrectos o están incompletos.');
-        case 500:
-          throw Exception('Error 500: Error interno en el servidor de Backend.');
-        default:
-          throw Exception('Error al enviar reporte: HTTP ${response.statusCode}');
-      }
-
+      throw Exception('POST ${response.statusCode}: ${response.body}');
     } on TimeoutException {
-      throw Exception('Tiempo de espera agotado al enviar el reporte.');
-    } on http.ClientException catch (e) {
-      throw Exception('Error de conexión: $e');
-    } catch (e) {
-      throw Exception('Error inesperado al enviar reporte: $e');
+      throw Exception('Tiempo de espera agotado');
     }
   }
 
@@ -78,20 +98,8 @@ class ApiService {
   Future<List<Reporte>> consultarReportes() async {
     if (useMockData) {
       await Future.delayed(const Duration(seconds: 2));
-
       return [
-        Reporte(
-          id: 1,
-          descripcion: 'Fuga en la esquina',
-          ubicacion: 'Calle 5',
-          fecha: '2026-11-07',
-        ),
-        Reporte(
-          id: 2,
-          descripcion: 'Toma clandestina',
-          ubicacion: 'Av. Juárez',
-          fecha: '2026-11-06',
-        ),
+        Reporte(id: 1, descripcion: 'Fuga en la esquina (Mock)', categoria: 'fuga', estado: 'pendiente'),
       ];
     }
 
@@ -104,31 +112,15 @@ class ApiService {
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final List<dynamic> body = jsonDecode(response.body);
-
-        return body.map((item) {
-          return Reporte.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          );
-        }).toList();
+        final Map<String, dynamic> body = jsonDecode(response.body);
+        final List<dynamic> listaDatos = body['datos'] ?? [];
+        return listaDatos
+            .map((item) => Reporte.fromJson(Map<String, dynamic>.from(item as Map)))
+            .toList();
       }
-
-      // Manejo de códigos de error para GET
-      switch (response.statusCode) {
-        case 404:
-          throw Exception('Error 404: No se encontraron reportes en el servidor.');
-        case 500:
-          throw Exception('Error 500: Error interno en el servidor de Backend.');
-        default:
-          throw Exception('Error del servidor: HTTP ${response.statusCode}');
-      }
-
-    } on TimeoutException {
-      throw Exception('Tiempo de espera agotado al consultar reportes.');
-    } on http.ClientException catch (e) {
-      throw Exception('Error de conexión: $e');
+      throw Exception('Error del servidor: HTTP ${response.statusCode}');
     } catch (e) {
-      throw Exception('No se pudieron consultar los reportes: $e');
+      throw Exception('Error de conexión: $e');
     }
   }
 
@@ -136,20 +128,8 @@ class ApiService {
   Future<List<AvisoSuministro>> obtenerAvisosSuministro() async {
     if (useMockData) {
       await Future.delayed(const Duration(seconds: 1));
-
       return [
-        AvisoSuministro(
-          id: 1,
-          titulo: 'Corte programado',
-          detalle: 'Mantenimiento de tuberías',
-          coloniaAfectada: 'Centro',
-        ),
-        AvisoSuministro(
-          id: 2,
-          titulo: 'Baja presión',
-          detalle: 'Reparación de tubería',
-          coloniaAfectada: 'Las Flores',
-        ),
+        AvisoSuministro(id: 1, titulo: 'Corte programado (Mock)', mensaje: 'Mantenimiento', zonaId: 1),
       ];
     }
 
@@ -162,35 +142,49 @@ class ApiService {
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final List<dynamic> body = jsonDecode(response.body);
-
-        return body.map((item) {
-          return AvisoSuministro.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          );
-        }).toList();
+        final Map<String, dynamic> body = jsonDecode(response.body);
+        final List<dynamic> listaDatos = body['datos'] ?? [];
+        return listaDatos
+            .map((item) => AvisoSuministro.fromJson(Map<String, dynamic>.from(item as Map)))
+            .toList();
       }
-
-      // Manejo de códigos de error para GET
-      switch (response.statusCode) {
-        case 404:
-          throw Exception('Error 404: No se encontraron avisos en el servidor.');
-        case 500:
-          throw Exception('Error 500: Error interno en el servidor de Backend.');
-        default:
-          throw Exception('Error al cargar avisos: HTTP ${response.statusCode}');
-      }
-
-    } on TimeoutException {
-      throw Exception('Tiempo de espera agotado al consultar avisos.');
-    } on http.ClientException catch (e) {
-      throw Exception('Error de conexión: $e');
+      throw Exception('Error al cargar avisos: HTTP ${response.statusCode}');
     } catch (e) {
-      throw Exception('No se pudieron consultar los avisos: $e');
+      throw Exception('Error de conexión: $e');
     }
   }
 
-  // Cerrar el cliente HTTP cuando ya no se necesite.
+  // 4. OBTENER ZONAS (GET). Si la ruta no responde, usa las zonas por defecto.
+  Future<List<Zona>> obtenerZonas() async {
+    final porDefecto = [
+      Zona(id: 1, nombre: 'Zona Norte'),
+      Zona(id: 2, nombre: 'Zona Centro'),
+      Zona(id: 3, nombre: 'Zona Sur'),
+    ];
+    if (useMockData) return porDefecto;
+
+    try {
+      final response = await _client
+          .get(
+            Uri.parse('$baseUrl/zonas'),
+            headers: {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final lista = decoded is Map ? (decoded['datos'] ?? []) : decoded;
+        final zonas = (lista as List)
+            .map((e) => Zona.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+        if (zonas.isNotEmpty) return zonas;
+      }
+    } catch (_) {
+      // Si falla, se usan las zonas por defecto
+    }
+    return porDefecto;
+  }
+
   void dispose() {
     _client.close();
   }

@@ -1,46 +1,79 @@
 class Reporte {
   final int id;
+  final String? folio;
   final String descripcion;
-  final String ubicacion;
-  final String fecha;
+  final String? categoria;
+  final String? estado;
+  final String? zonaNombre;
+  final double? latitud;
+  final double? longitud;
 
   Reporte({
     required this.id,
+    this.folio,
     required this.descripcion,
-    required this.ubicacion,
-    required this.fecha,
+    this.categoria,
+    this.estado,
+    this.zonaNombre,
+    this.latitud,
+    this.longitud,
   });
 
   factory Reporte.fromJson(Map<String, dynamic> json) {
+    final zona = json['zona'];
     return Reporte(
-      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
-      descripcion: json['descripcion']?.toString() ?? 'Sin descripción',
-      ubicacion: json['ubicacion']?.toString() ?? 'Desconocida',
-      fecha: json['fecha']?.toString() ?? 'Sin fecha',
+      id: json['id'] ?? 0,
+      folio: json['folio'],
+      descripcion: json['descripcion'] ?? 'Sin descripción',
+      categoria: json['categoria'],
+      estado: json['estado'],
+      zonaNombre: zona is Map ? zona['nombre']?.toString() : null,
+      latitud: (json['latitud'] as num?)?.toDouble(),
+      longitud: (json['longitud'] as num?)?.toDouble(),
     );
   }
 }
 
 class AvisoSuministro {
   final int id;
+  final int? zonaId;
   final String titulo;
-  final String detalle;
-  final String coloniaAfectada;
+  final String mensaje;
+  final String? horario;
+  final String? fechaPublicacion;
 
   AvisoSuministro({
     required this.id,
+    this.zonaId,
     required this.titulo,
-    required this.detalle,
-    required this.coloniaAfectada,
+    required this.mensaje,
+    this.horario,
+    this.fechaPublicacion,
   });
 
   factory AvisoSuministro.fromJson(Map<String, dynamic> json) {
+    final zona = json['zona'];
     return AvisoSuministro(
-      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
-      titulo: json['titulo']?.toString() ?? 'Sin título',
-      detalle: json['detalle']?.toString() ?? 'Sin detalle',
-      coloniaAfectada:
-          json['coloniaAfectada']?.toString() ?? 'General',
+      id: json['id'] ?? 0,
+      zonaId: json['zonaId'] ?? json['zona_id'] ?? (zona is Map ? zona['id'] : null),
+      titulo: json['titulo'] ?? 'Sin título',
+      mensaje: json['mensaje'] ?? 'Sin mensaje',
+      horario: json['horario']?.toString(),
+      fechaPublicacion: (json['fechaPublicacion'] ?? json['fecha_publicacion'])?.toString(),
+    );
+  }
+}
+
+class Zona {
+  final int id;
+  final String nombre;
+
+  Zona({required this.id, required this.nombre});
+
+  factory Zona.fromJson(Map<String, dynamic> json) {
+    return Zona(
+      id: json['id'] ?? 0,
+      nombre: (json['nombre'] ?? json['nombreZona'] ?? json['nombre_zona'] ?? 'Zona ${json['id']}').toString(),
     );
   }
 }
